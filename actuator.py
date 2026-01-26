@@ -1,11 +1,14 @@
 """
 Actuator module for XiaoRGEEK servo/motor control.
 
-Controls steering and throttle via the XiaoRGEEK HAT's I2C interface.
-Protocol: Address 0x17, command 0xFF, data [servo_num, value]
+Steering: I2C to address 0x17, command 0xFF, data [servo_num, value]
+Motors: GPIO pins (H-bridge control)
+  - Motor 1: ENA=GPIO13, IN1=GPIO19, IN2=GPIO16
+  - Motor 2: ENB=GPIO20, IN3=GPIO21, IN4=GPIO26
 """
 
 import smbus
+import lgpio
 import time
 
 
@@ -116,28 +119,40 @@ class PWMSteering:
 
 class PWMThrottle:
     """
-    Throttle control via XiaoRGEEK servo controller.
+    Throttle control via GPIO H-bridge (Motor 1 on PWR.A53.A board).
 
-    Maps throttle (-1 to 1) to PWM pulse values.
+    Maps throttle (-1 to 1) to motor speed and direction.
     """
 
-    def __init__(self, channel=0, max_pulse=200, zero_pulse=100, min_pulse=0, address=0x17):
+    # Motor 1 GPIO pins
+    M1_ENA = 13  # PWM/Enable
+    M1_IN1 = 19  # Direction
+    M1_IN2 = 16  # Direction
+
+    _gpio_handle = None
+
+    def __init__(self, pwm_freq=100):
         """
         Initialize throttle controller.
 
         Args:
-            channel: Servo channel (default 0 for throttle)
-            max_pulse: PWM value for full forward
-            zero_pulse: PWM value for stop
-            min_pulse: PWM value for full reverse
-            address: I2C address (default 0x17 for XiaoRGEEK)
+            pwm_freq: PWM frequency in Hz (default 100)
         """
-        self.channel = channel
-        self.max_pulse = max_pulse
-        self.zero_pulse = zero_pulse
-        self.min_pulse = min_pulse
-        self.controller = XRServoController.get_instance(address)
+        self.pwm_freq = pwm_freq
         self.current_throttle = 0.0
+
+        # Open GPIO if not already open
+        if PWMThrottle._gpio_handle is None:
+            PWMThrottle._gpio_handle = lgpio.gpiochip_open(0)
+
+        self.h = PWMThrottle._gpio_handle
+
+        # Setup pins as outputs
+        for pin in [self.M1_ENA, self.M1_IN1, self.M1_IN2]:
+            try:
+                lgpio.gpio_claim_output(self.h, pin, 0)
+            except:
+                pass  # Already claimed
 
     def run(self, throttle):
         """
@@ -153,13 +168,24 @@ class PWMThrottle:
         throttle = max(-1.0, min(1.0, throttle))
         self.current_throttle = throttle
 
-        # Map throttle to pulse
-        if throttle >= 0:
-            pulse = int(self.zero_pulse + throttle * (self.max_pulse - self.zero_pulse))
-        else:
-            pulse = int(self.zero_pulse + throttle * (self.zero_pulse - self.min_pulse))
+        # Convert to speed percentage (0-100)
+        speed = abs(throttle) * 100
 
-        self.controller.set_servo(self.channel, pulse)
+        if throttle > 0.01:
+            # Forward: IN1=HIGH, IN2=LOW
+            lgpio.gpio_write(self.h, self.M1_IN1, 1)
+            lgpio.gpio_write(self.h, self.M1_IN2, 0)
+            lgpio.tx_pwm(self.h, self.M1_ENA, self.pwm_freq, speed)
+        elif throttle < -0.01:
+            # Backward: IN1=LOW, IN2=HIGH
+            lgpio.gpio_write(self.h, self.M1_IN1, 0)
+            lgpio.gpio_write(self.h, self.M1_IN2, 1)
+            lgpio.tx_pwm(self.h, self.M1_ENA, self.pwm_freq, speed)
+        else:
+            # Stop: IN1=LOW, IN2=LOW, PWM=0
+            lgpio.gpio_write(self.h, self.M1_IN1, 0)
+            lgpio.gpio_write(self.h, self.M1_IN2, 0)
+            lgpio.tx_pwm(self.h, self.M1_ENA, self.pwm_freq, 0)
 
     def shutdown(self):
         """Stop motor on shutdown."""
@@ -173,7 +199,7 @@ if __name__ == "__main__":
     print("Testing XiaoRGEEK actuators...")
 
     steering = PWMSteering(channel=1, left_pulse=0, right_pulse=170)
-    throttle = PWMThrottle(channel=0, max_pulse=200, zero_pulse=100, min_pulse=0)
+    throttle = PWMThrottle()
 
     print("Centering steering...")
     steering.run(0)
@@ -192,9 +218,17 @@ if __name__ == "__main__":
     time.sleep(0.5)
 
     if "--throttle" in sys.argv:
-        print("Small throttle forward...")
-        throttle.run(0.2)
-        time.sleep(1)
+        print("Throttle forward (50%)...")
+        throttle.run(0.5)
+        time.sleep(1.5)
+
+        print("Stopping...")
+        throttle.run(0)
+        time.sleep(0.5)
+
+        print("Throttle reverse (50%)...")
+        throttle.run(-0.5)
+        time.sleep(1.5)
 
         print("Stopping...")
         throttle.run(0)
