@@ -1,78 +1,94 @@
 """
-Pure Python actuator control for PCA9685 PWM controller.
+Actuator module for XiaoRGEEK servo/motor control.
 
-Replaces the proprietary XiaoRGEEK .so binaries with standard libraries.
-Uses Adafruit CircuitPython PCA9685 library.
-
-Install: pip3 install adafruit-circuitpython-pca9685 --break-system-packages
+Controls steering and throttle via the XiaoRGEEK HAT's I2C interface.
+Protocol: Address 0x17, command 0xFF, data [servo_num, value]
 """
 
+import smbus
 import time
-import board
-import busio
-from adafruit_pca9685 import PCA9685
 
 
-class PWMController:
+class XRServoController:
     """
-    PCA9685 PWM controller wrapper.
+    XiaoRGEEK servo controller interface.
+
+    Singleton pattern - only one instance talks to the hardware.
     """
+
     _instance = None
 
-    def __init__(self, address=0x40, frequency=50):
-        self.address = address
-        self.frequency = frequency
-        self._pca = None
-
-    def _init_pca(self):
-        if self._pca is None:
-            i2c = busio.I2C(board.SCL, board.SDA)
-            self._pca = PCA9685(i2c, address=self.address)
-            self._pca.frequency = self.frequency
-        return self._pca
-
     @classmethod
-    def get_instance(cls, address=0x40, frequency=50):
-        """Get singleton instance of PWM controller."""
+    def get_instance(cls, address=0x17, bus_num=1):
         if cls._instance is None:
-            cls._instance = cls(address, frequency)
+            cls._instance = cls(address, bus_num)
         return cls._instance
 
-    def set_pwm(self, channel, pulse):
+    def __init__(self, address=0x17, bus_num=1):
+        self.address = address
+        self.bus = smbus.SMBus(bus_num)
+        # Prime the buffer by sending a few dummy commands
+        self._prime_buffer()
+
+    def _prime_buffer(self):
+        """Prime the command buffer to clear any stale state."""
+        # Send dummy commands to flush the buffer
+        for _ in range(3):
+            try:
+                self.bus.write_i2c_block_data(self.address, 0xFF, [1, 85])
+            except:
+                pass
+            time.sleep(0.02)
+
+    def set_servo(self, channel, value):
         """
-        Set PWM pulse on channel.
+        Set servo position.
 
         Args:
-            channel: PCA9685 channel (0-15)
-            pulse: Pulse value (0-4095)
+            channel: Servo channel (0=throttle, 1=steering)
+            value: PWM value (0=left, 100=center, 200=right for steering)
+
+        Note: XiaoRGEEK controller has a one-command buffer, so we send
+        the command twice to flush it and execute immediately.
         """
-        pca = self._init_pca()
-        # PCA9685 uses 12-bit values (0-4095)
-        # Convert our simple pulse value to duty cycle
-        # For servos at 50Hz, pulse of 0-4095 maps to duty cycle
-        pca.channels[channel].duty_cycle = int(pulse * 16)  # Scale to 16-bit
+        cmd = [channel, int(value)]
+        # Send 3 times to ensure command executes immediately
+        self.bus.write_i2c_block_data(self.address, 0xFF, cmd)
+        self.bus.write_i2c_block_data(self.address, 0xFF, cmd)
+        self.bus.write_i2c_block_data(self.address, 0xFF, cmd)
 
     def shutdown(self):
-        """Turn off all PWM outputs."""
-        if self._pca is not None:
-            for i in range(16):
-                self._pca.channels[i].duty_cycle = 0
-            self._pca.deinit()
-            self._pca = None
+        """Close the I2C bus."""
+        if self.bus:
+            self.bus.close()
+            self.bus = None
+
+
+# Alias for backwards compatibility
+PWMController = XRServoController
 
 
 class PWMSteering:
     """
-    Steering control via PWM.
+    Steering control via XiaoRGEEK servo controller.
 
     Maps angle (-1 to 1) to PWM pulse values.
     """
 
-    def __init__(self, channel=1, left_pulse=40, right_pulse=150, address=0x40):
+    def __init__(self, channel=1, left_pulse=0, right_pulse=170, address=0x17):
+        """
+        Initialize steering controller.
+
+        Args:
+            channel: Servo channel (default 1 for steering)
+            left_pulse: PWM value for full left
+            right_pulse: PWM value for full right
+            address: I2C address (default 0x17 for XiaoRGEEK)
+        """
         self.channel = channel
         self.left_pulse = left_pulse
         self.right_pulse = right_pulse
-        self.pwm = PWMController.get_instance(address)
+        self.controller = XRServoController.get_instance(address)
         self.current_angle = 0.0
 
     def run(self, angle):
@@ -80,7 +96,7 @@ class PWMSteering:
         Set steering angle.
 
         Args:
-            angle: -1.0 (full left) to 1.0 (full right)
+            angle: -1.0 (full left) to 1.0 (full right), 0 = center
         """
         if angle is None:
             return
@@ -91,7 +107,7 @@ class PWMSteering:
 
         # Map -1..1 to left_pulse..right_pulse
         pulse = int(self.left_pulse + (angle + 1) / 2 * (self.right_pulse - self.left_pulse))
-        self.pwm.set_pwm(self.channel, pulse)
+        self.controller.set_servo(self.channel, pulse)
 
     def shutdown(self):
         """Center steering on shutdown."""
@@ -100,17 +116,27 @@ class PWMSteering:
 
 class PWMThrottle:
     """
-    Throttle control via PWM.
+    Throttle control via XiaoRGEEK servo controller.
 
     Maps throttle (-1 to 1) to PWM pulse values.
     """
 
-    def __init__(self, channel=0, max_pulse=200, zero_pulse=100, min_pulse=0, address=0x40):
+    def __init__(self, channel=0, max_pulse=200, zero_pulse=100, min_pulse=0, address=0x17):
+        """
+        Initialize throttle controller.
+
+        Args:
+            channel: Servo channel (default 0 for throttle)
+            max_pulse: PWM value for full forward
+            zero_pulse: PWM value for stop
+            min_pulse: PWM value for full reverse
+            address: I2C address (default 0x17 for XiaoRGEEK)
+        """
         self.channel = channel
         self.max_pulse = max_pulse
         self.zero_pulse = zero_pulse
         self.min_pulse = min_pulse
-        self.pwm = PWMController.get_instance(address)
+        self.controller = XRServoController.get_instance(address)
         self.current_throttle = 0.0
 
     def run(self, throttle):
@@ -118,7 +144,7 @@ class PWMThrottle:
         Set throttle.
 
         Args:
-            throttle: -1.0 (full reverse) to 1.0 (full forward)
+            throttle: -1.0 (full reverse) to 1.0 (full forward), 0 = stop
         """
         if throttle is None:
             return
@@ -133,7 +159,7 @@ class PWMThrottle:
         else:
             pulse = int(self.zero_pulse + throttle * (self.zero_pulse - self.min_pulse))
 
-        self.pwm.set_pwm(self.channel, pulse)
+        self.controller.set_servo(self.channel, pulse)
 
     def shutdown(self):
         """Stop motor on shutdown."""
@@ -142,9 +168,11 @@ class PWMThrottle:
 
 # Test function
 if __name__ == "__main__":
-    print("Testing actuators...")
+    import sys
 
-    steering = PWMSteering(channel=1, left_pulse=40, right_pulse=150)
+    print("Testing XiaoRGEEK actuators...")
+
+    steering = PWMSteering(channel=1, left_pulse=0, right_pulse=170)
     throttle = PWMThrottle(channel=0, max_pulse=200, zero_pulse=100, min_pulse=0)
 
     print("Centering steering...")
@@ -152,22 +180,30 @@ if __name__ == "__main__":
     time.sleep(1)
 
     print("Steering left...")
-    steering.run(-0.5)
-    time.sleep(0.5)
+    steering.run(-1)
+    time.sleep(1)
 
     print("Steering right...")
-    steering.run(0.5)
-    time.sleep(0.5)
+    steering.run(1)
+    time.sleep(1)
 
     print("Centering...")
     steering.run(0)
     time.sleep(0.5)
 
-    print("Small throttle forward...")
-    throttle.run(0.1)
-    time.sleep(0.5)
+    if "--throttle" in sys.argv:
+        print("Small throttle forward...")
+        throttle.run(0.2)
+        time.sleep(1)
 
-    print("Stopping...")
-    throttle.run(0)
+        print("Stopping...")
+        throttle.run(0)
+
+    # Flush buffer before exit
+    steering.run(0)
+    steering.run(0)
+
+    # Reset singleton so next run starts fresh
+    XRServoController._instance = None
 
     print("Done!")
