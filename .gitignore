@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .venv/
+.python-version
 
 # Backup of original code
 pi/
