@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Backup of original code
+pi/
+
+# SSL certs (generated at runtime)
+web_controller/server.crt
+web_controller/server.key
