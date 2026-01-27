@@ -113,9 +113,9 @@ class PWMSteering:
         self.controller.set_servo(self.channel, pulse)
 
     def shutdown(self):
-        """Release steering servo on shutdown."""
-        # Just close the I2C bus - don't send any position
-        self.controller.shutdown()
+        """Center steering on shutdown (servo stays locked until power cycle)."""
+        center = (self.left_pulse + self.right_pulse) // 2
+        self.controller.set_servo(self.channel, center)
 
 
 class PWMThrottle:
