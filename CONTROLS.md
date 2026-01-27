@@ -38,6 +38,10 @@ bus.write_i2c_block_data(address, 0xFF, [1, 85])
 
 The controller has a one-command buffer. Commands are delayed by one unless sent multiple times. Always send commands 3x for immediate execution:
 
+### Servo Lock Quirk
+
+The steering servo stays locked (holds position) even after the program exits or I2C bus is closed. There is no known command to release the servo. **Power cycle the car to release the steering servo.**
+
 ```python
 def set_steering(value):
     cmd = [1, value]

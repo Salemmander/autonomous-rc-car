@@ -64,3 +64,4 @@ Managed with `uv`. The virtual environment uses `--system-site-packages` to acce
 - The `pi/` directory contains the original 32-bit code for reference - do not modify
 - Always test motor changes with the car wheels off the ground
 - The I2C controller has a one-command buffer - always send commands 3 times
+- The steering servo stays locked after program exit - power cycle the car to release it
