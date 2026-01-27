@@ -114,10 +114,7 @@ class PWMSteering:
 
     def shutdown(self):
         """Release steering servo on shutdown."""
-        # Send 0 to release the servo (stop PWM signal)
-        self.controller.set_servo(self.channel, 0)
-        time.sleep(0.1)
-        # Close I2C bus to fully release
+        # Just close the I2C bus - don't send any position
         self.controller.shutdown()
 
 
