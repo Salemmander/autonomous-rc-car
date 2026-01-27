@@ -171,29 +171,27 @@ class DriveAPI(tornado.web.RequestHandler):
 class VideoAPI(tornado.web.RequestHandler):
     """Serve MJPEG video stream."""
 
-    @tornado.web.asynchronous
-    @tornado.gen.coroutine
-    def get(self):
+    async def get(self):
         self.set_header("Content-type", "multipart/x-mixed-replace;boundary=--boundarydonotcross")
 
-        self.served_image_timestamp = time.time()
+        served_image_timestamp = time.time()
         my_boundary = "--boundarydonotcross\r\n"
 
         while True:
             interval = 0.1  # 10 FPS for video stream
 
-            if self.served_image_timestamp + interval < time.time():
+            if served_image_timestamp + interval < time.time():
                 img = arr_to_binary(self.application.img_arr)
 
                 self.write(my_boundary)
                 self.write("Content-type: image/jpeg\r\n")
                 self.write(f"Content-length: {len(img)}\r\n\r\n")
                 self.write(img)
-                self.served_image_timestamp = time.time()
+                served_image_timestamp = time.time()
 
                 try:
-                    yield tornado.gen.Task(self.flush)
+                    await self.flush()
                 except tornado.iostream.StreamClosedError:
                     break
             else:
-                yield tornado.gen.sleep(interval)
+                await tornado.gen.sleep(interval)

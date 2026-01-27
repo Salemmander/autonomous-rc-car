@@ -7,7 +7,9 @@ requires-python = ">=3.11"
 dependencies = [
     "adafruit-blinka>=8.69.0",
     "adafruit-circuitpython-pca9685>=3.4.20",
+    "numpy>=2.0.0",
     "pillow>=12.1.0",
+    "smbus2>=0.5.0",
     "tornado>=6.5.4",
 ]
 
