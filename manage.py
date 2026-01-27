@@ -19,7 +19,7 @@ import signal
 
 # Import local modules
 import config as cfg
-from actuator import PWMSteering, PWMThrottle, PWMController
+from actuator import PWMSteering, PWMThrottle
 from camera import PiCamera, MockCamera
 from web_controller.web import LocalWebController
 
@@ -91,8 +91,8 @@ def drive(use_mock_camera=False):
         use_mock_camera: Use mock camera for testing
     """
     print("Initializing Donkey Car...")
-    print(f"  Steering: Channel {cfg.STEERING_CHANNEL}, PWM {cfg.STEERING_LEFT_PWM}-{cfg.STEERING_RIGHT_PWM}")
-    print(f"  Throttle: Channel {cfg.THROTTLE_CHANNEL}, PWM {cfg.THROTTLE_REVERSE_PWM}-{cfg.THROTTLE_FORWARD_PWM}")
+    print(f"  Steering: I2C channel {cfg.STEERING_CHANNEL}, PWM {cfg.STEERING_LEFT_PWM}-{cfg.STEERING_RIGHT_PWM}")
+    print(f"  Throttle: GPIO motor control (pins 13, 16, 19)")
 
     # Create vehicle
     V = Vehicle()
@@ -122,13 +122,8 @@ def drive(use_mock_camera=False):
     )
     V.add(steering, name='steering')
 
-    throttle = PWMThrottle(
-        channel=cfg.THROTTLE_CHANNEL,
-        max_pulse=cfg.THROTTLE_FORWARD_PWM,
-        zero_pulse=cfg.THROTTLE_STOPPED_PWM,
-        min_pulse=cfg.THROTTLE_REVERSE_PWM,
-        address=cfg.PCA9685_I2C_ADDR
-    )
+    # Throttle uses GPIO motor control (not I2C)
+    throttle = PWMThrottle()
     V.add(throttle, name='throttle')
 
     # Center steering and stop throttle
@@ -184,10 +179,6 @@ def drive(use_mock_camera=False):
         # Stop camera
         print("Stopping camera...")
         cam.shutdown()
-
-        # Stop PWM controller
-        pwm = PWMController.get_instance()
-        pwm.shutdown()
 
         print("Goodbye!")
 
