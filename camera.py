@@ -34,16 +34,16 @@ class PiCamera:
         self._camera = None
 
     def _init_camera(self):
-        """Initialize picamera2."""
+        """Initialize picamera2 (works with Pi camera or USB webcam)."""
         from picamera2 import Picamera2
 
         self._camera = Picamera2()
 
         # Configure for video capture
+        # Note: Don't set FrameRate control - USB cameras don't support it
         height, width = self.resolution
         config = self._camera.create_video_configuration(
-            main={"size": (width, height), "format": "RGB888"},
-            controls={"FrameRate": self.framerate}
+            main={"size": (width, height), "format": "RGB888"}
         )
         self._camera.configure(config)
         self._camera.start()
