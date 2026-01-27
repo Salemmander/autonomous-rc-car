@@ -15,7 +15,6 @@ Options:
 import sys
 import time
 import threading
-import signal
 
 # Import local modules
 import config as cfg
@@ -37,7 +36,7 @@ class Vehicle:
 
     def add(self, part, name=None):
         """Add a part to the vehicle."""
-        self.parts.append({'part': part, 'name': name})
+        self.parts.append({"part": part, "name": name})
 
     def start(self, rate_hz=20):
         """Start the vehicle control loop."""
@@ -75,8 +74,8 @@ class Vehicle:
         """Shutdown all parts."""
         self.running = False
         for entry in self.parts:
-            part = entry['part']
-            if hasattr(part, 'shutdown'):
+            part = entry["part"]
+            if hasattr(part, "shutdown"):
                 try:
                     part.shutdown()
                 except Exception as e:
@@ -91,7 +90,9 @@ def drive(use_mock_camera=False):
         use_mock_camera: Use mock camera for testing
     """
     print("Initializing Donkey Car...")
-    print(f"  Steering: I2C channel {cfg.STEERING_CHANNEL}, PWM {cfg.STEERING_LEFT_PWM}-{cfg.STEERING_RIGHT_PWM}")
+    print(
+        f"  Steering: I2C channel {cfg.STEERING_CHANNEL}, PWM {cfg.STEERING_LEFT_PWM}-{cfg.STEERING_RIGHT_PWM}"
+    )
     print(f"  Throttle: GPIO motor control (pins 13, 16, 19)")
 
     # Create vehicle
@@ -100,17 +101,19 @@ def drive(use_mock_camera=False):
     # Initialize camera
     if use_mock_camera:
         print("Using mock camera (test mode)")
-        cam = MockCamera(resolution=cfg.CAMERA_RESOLUTION, framerate=cfg.CAMERA_FRAMERATE)
+        cam = MockCamera(
+            resolution=cfg.CAMERA_RESOLUTION, framerate=cfg.CAMERA_FRAMERATE
+        )
     else:
         print("Initializing Pi camera...")
         cam = PiCamera(resolution=cfg.CAMERA_RESOLUTION, framerate=cfg.CAMERA_FRAMERATE)
 
-    V.add(cam, name='camera')
+    V.add(cam, name="camera")
 
     # Initialize web controller
     print("Initializing web controller...")
     ctr = LocalWebController()
-    V.add(ctr, name='web_controller')
+    V.add(ctr, name="web_controller")
 
     # Initialize actuators
     print("Initializing actuators...")
@@ -118,13 +121,13 @@ def drive(use_mock_camera=False):
         channel=cfg.STEERING_CHANNEL,
         left_pulse=cfg.STEERING_LEFT_PWM,
         right_pulse=cfg.STEERING_RIGHT_PWM,
-        address=cfg.PCA9685_I2C_ADDR
+        address=cfg.PCA9685_I2C_ADDR,
     )
-    V.add(steering, name='steering')
+    V.add(steering, name="steering")
 
     # Throttle uses GPIO motor control (not I2C)
     throttle = PWMThrottle()
-    V.add(throttle, name='throttle')
+    V.add(throttle, name="throttle")
 
     # Center steering and stop throttle
     steering.run(0)
