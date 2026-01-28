@@ -109,7 +109,9 @@ class PWMSteering:
         self.current_angle = angle
 
         # Map -1..1 to left_pulse..right_pulse
-        pulse = int(self.left_pulse + (angle + 1) / 2 * (self.right_pulse - self.left_pulse))
+        pulse = int(
+            self.left_pulse + (angle + 1) / 2 * (self.right_pulse - self.left_pulse)
+        )
         self.controller.set_servo(self.channel, pulse)
 
     def shutdown(self):
@@ -156,12 +158,7 @@ class PWMThrottle:
                 pass  # Already claimed
 
     def run(self, throttle):
-        """
-        Set throttle.
-
-        Args:
-            throttle: -1.0 (full reverse) to 1.0 (full forward), 0 = stop
-        """
+        """Set throttle: -1.0 (reverse) to 1.0 (forward)."""
         if throttle is None:
             return
 

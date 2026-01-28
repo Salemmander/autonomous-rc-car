@@ -31,6 +31,7 @@ See `CONTROLS.md` for full details.
 
 ## Key Files
 
+- `vehicle.py` - Unified vehicle interface (steering, throttle, camera)
 - `actuator.py` - Steering (I2C) and motor (GPIO) control
 - `camera.py` - Pi 5 camera using picamera2
 - `manage.py` - Main entry point
