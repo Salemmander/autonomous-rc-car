@@ -6,145 +6,36 @@ Simplified version that only supports manual web-based driving.
 No AI/autopilot features - just basic remote control.
 
 Usage:
-    python3 manage.py drive [--mock]
-
-Options:
-    --mock    Use mock camera (for testing without hardware)
+    python3 manage.py drive
 """
 
 import sys
 import time
 import threading
 
-# Import local modules
 import config as cfg
-from actuator import PWMSteering, PWMThrottle
-from camera import PiCamera, MockCamera
+from vehicle import Vehicle
 from web_controller.web import LocalWebController
 
 
-class Vehicle:
-    """
-    Simple vehicle controller.
-
-    Runs the main control loop, updating actuators based on web controller input.
-    """
-
-    def __init__(self):
-        self.running = False
-        self.parts = []
-
-    def add(self, part, name=None):
-        """Add a part to the vehicle."""
-        self.parts.append({"part": part, "name": name})
-
-    def start(self, rate_hz=20):
-        """Start the vehicle control loop."""
-        self.running = True
-        loop_time = 1.0 / rate_hz
-
-        print(f"Starting vehicle loop at {rate_hz} Hz")
-
-        try:
-            while self.running:
-                start = time.time()
-
-                # Run one iteration
-                self._update()
-
-                # Sleep to maintain loop rate
-                elapsed = time.time() - start
-                sleep_time = loop_time - elapsed
-                if sleep_time > 0:
-                    time.sleep(sleep_time)
-
-        except KeyboardInterrupt:
-            print("\nShutting down...")
-
-        finally:
-            self.shutdown()
-
-    def _update(self):
-        """Run one control loop iteration."""
-        # This is called by the main loop
-        # Parts are updated via their threaded methods
-        pass
-
-    def shutdown(self):
-        """Shutdown all parts."""
-        self.running = False
-        for entry in self.parts:
-            part = entry["part"]
-            if hasattr(part, "shutdown"):
-                try:
-                    part.shutdown()
-                except Exception as e:
-                    print(f"Error shutting down {entry['name']}: {e}")
-
-
-def drive(use_mock_camera=False):
-    """
-    Run the vehicle in manual drive mode.
-
-    Args:
-        use_mock_camera: Use mock camera for testing
-    """
+def drive():
+    """Run the vehicle in manual drive mode."""
     print("Initializing Donkey Car...")
-    print(
-        f"  Steering: I2C channel {cfg.STEERING_CHANNEL}, PWM {cfg.STEERING_LEFT_PWM}-{cfg.STEERING_RIGHT_PWM}"
-    )
-    print(f"  Throttle: GPIO motor control (pins 13, 16, 19)")
+    print(f"  Steering: I2C channel {cfg.STEERING_CHANNEL}, PWM {cfg.STEERING_LEFT_PWM}-{cfg.STEERING_RIGHT_PWM}")  # fmt: skip
+    print("  Throttle: GPIO motor control (pins 13, 16, 19)")
 
-    # Create vehicle
-    V = Vehicle()
-
-    # Initialize camera
-    if use_mock_camera:
-        print("Using mock camera (test mode)")
-        cam = MockCamera(
-            resolution=cfg.CAMERA_RESOLUTION, framerate=cfg.CAMERA_FRAMERATE
-        )
-    else:
-        print("Initializing Pi camera...")
-        cam = PiCamera(resolution=cfg.CAMERA_RESOLUTION, framerate=cfg.CAMERA_FRAMERATE)
-
-    V.add(cam, name="camera")
-
-    # Initialize web controller
-    print("Initializing web controller...")
+    vehicle = Vehicle()
     ctr = LocalWebController()
-    V.add(ctr, name="web_controller")
 
-    # Initialize actuators
-    print("Initializing actuators...")
-    steering = PWMSteering(
-        channel=cfg.STEERING_CHANNEL,
-        left_pulse=cfg.STEERING_LEFT_PWM,
-        right_pulse=cfg.STEERING_RIGHT_PWM,
-        address=cfg.PCA9685_I2C_ADDR,
-    )
-    V.add(steering, name="steering")
+    print("Starting vehicle...")
+    vehicle.start()
 
-    # Throttle uses GPIO motor control (not I2C)
-    throttle = PWMThrottle()
-    V.add(throttle, name="throttle")
-
-    # Center steering and stop throttle
-    steering.run(0)
-    throttle.run(0)
-
-    # Start camera thread
-    cam_thread = threading.Thread(target=cam.update, daemon=True)
-    cam_thread.start()
-
-    # Start web server thread
+    print("Starting web controller...")
     web_thread = threading.Thread(target=ctr.update, daemon=True)
     web_thread.start()
 
-    # Give threads time to start
-    time.sleep(1)
+    time.sleep(1)  # Let threads start
 
-    # Main control loop
     print("\nStarting control loop...")
     print("Press Ctrl+C to stop\n")
 
@@ -154,17 +45,10 @@ def drive(use_mock_camera=False):
         while True:
             start = time.time()
 
-            # Get camera frame
-            img = cam.run_threaded()
+            img = vehicle.get_frame()
+            angle, throttle, mode, recording = ctr.run_threaded(img)
+            vehicle.drive(angle, throttle)
 
-            # Get control inputs from web controller
-            angle, throttle_val, mode, recording = ctr.run_threaded(img)
-
-            # Apply controls
-            steering.run(angle)
-            throttle.run(throttle_val)
-
-            # Maintain loop rate
             elapsed = time.time() - start
             sleep_time = loop_time - elapsed
             if sleep_time > 0:
@@ -174,24 +58,14 @@ def drive(use_mock_camera=False):
         print("\n\nShutting down...")
 
     finally:
-        # Stop actuators
-        print("Stopping motors...")
-        steering.shutdown()
-        throttle.shutdown()
-
-        # Stop camera
-        print("Stopping camera...")
-        cam.shutdown()
-
+        vehicle.shutdown()
         print("Goodbye!")
 
 
 def main():
     """Main entry point."""
-    use_mock = "--mock" in sys.argv
-
     if "drive" in sys.argv or len(sys.argv) == 1:
-        drive(use_mock_camera=use_mock)
+        drive()
     else:
         print(__doc__)
 
