@@ -24,6 +24,8 @@ var driveHandler = new function() {
 
     var joystick_options = {}
     var joystickLoopRunning=false;
+    var keyboardLoopRunning=false;
+    var keysPressed = {};
 
     var hasGamepad = false;
 
@@ -71,13 +73,26 @@ var driveHandler = new function() {
       $(document).keydown(function(e) {
           if(e.which == 32) { toggleBrake() }  // 'space'  brake
           if(e.which == 82) { toggleRecording() }  // 'r'  toggle recording
-          if(e.which == 73) { throttleUp() }  // 'i'  throttle up
-          if(e.which == 75) { throttleDown() } // 'k'  slow down
-          if(e.which == 74) { angleLeft() } // 'j' turn left
-          if(e.which == 76) { angleRight() } // 'l' turn right
           if(e.which == 65) { updateDriveMode('auto') } // 'a' turn on auto mode
           if(e.which == 68) { updateDriveMode('user') } // 'd' turn on manual mode
-          if(e.which == 83) { updateDriveMode('auto_angle') } // 'a' turn on auto mode
+          if(e.which == 83) { updateDriveMode('auto_angle') } // 's' turn on auto angle mode
+
+          // IJKL - game-style hold controls
+          if(e.which == 73) { keysPressed['i'] = true; }  // 'i' forward
+          if(e.which == 75) { keysPressed['k'] = true; }  // 'k' reverse
+          if(e.which == 74) { keysPressed['j'] = true; }  // 'j' left
+          if(e.which == 76) { keysPressed['l'] = true; }  // 'l' right
+
+          updateKeyboardControls();
+      });
+
+      $(document).keyup(function(e) {
+          if(e.which == 73) { keysPressed['i'] = false; }
+          if(e.which == 75) { keysPressed['k'] = false; }
+          if(e.which == 74) { keysPressed['j'] = false; }
+          if(e.which == 76) { keysPressed['l'] = false; }
+
+          updateKeyboardControls();
       });
 
 
@@ -391,25 +406,65 @@ var driveHandler = new function() {
        }, 100)
     }
 
-    var throttleUp = function(){
-      state.tele.user.throttle = limitedThrottle(Math.min(state.tele.user.throttle + .05, 1));
-      postDrive()
+    var throttleStep = 0.1;  // How much to change per update (10 updates/sec = 1 sec to full)
+    var steeringStep = 0.2;  // Steering can be a bit faster
+
+    var updateKeyboardControls = function() {
+      // Throttle: i = forward, k = reverse (with ramping)
+      var throttleTarget = 0;
+      if (keysPressed['i'] && !keysPressed['k']) {
+        throttleTarget = 1.0;
+      } else if (keysPressed['k'] && !keysPressed['i']) {
+        throttleTarget = -1.0;
+      }
+
+      // Ramp toward target
+      if (state.tele.user.throttle < throttleTarget) {
+        state.tele.user.throttle = Math.min(state.tele.user.throttle + throttleStep, throttleTarget);
+      } else if (state.tele.user.throttle > throttleTarget) {
+        state.tele.user.throttle = Math.max(state.tele.user.throttle - throttleStep, throttleTarget);
+      }
+      state.tele.user.throttle = limitedThrottle(state.tele.user.throttle);
+
+      // Steering: j = left, l = right (with ramping)
+      var steeringTarget = 0;
+      if (keysPressed['j'] && !keysPressed['l']) {
+        steeringTarget = -1.0;
+      } else if (keysPressed['l'] && !keysPressed['j']) {
+        steeringTarget = 1.0;
+      }
+
+      // Ramp toward target
+      if (state.tele.user.angle < steeringTarget) {
+        state.tele.user.angle = Math.min(state.tele.user.angle + steeringStep, steeringTarget);
+      } else if (state.tele.user.angle > steeringTarget) {
+        state.tele.user.angle = Math.max(state.tele.user.angle - steeringStep, steeringTarget);
+      }
+
+      state.brakeOn = false;
+      postDrive();
+
+      // Start keyboard loop if not already running
+      if (!keyboardLoopRunning) {
+        keyboardLoopRunning = true;
+        keyboardLoop();
+      }
     };
 
-    var throttleDown = function(){
-      state.tele.user.throttle = limitedThrottle(Math.max(state.tele.user.throttle - .05, -1));
-      postDrive()
-    };
+    function keyboardLoop() {
+      setTimeout(function() {
+        // Keep running while keys held OR values not yet at zero
+        var needsUpdate = keysPressed['i'] || keysPressed['k'] || keysPressed['j'] || keysPressed['l'] ||
+                          state.tele.user.throttle != 0 || state.tele.user.angle != 0;
 
-    var angleLeft = function(){
-      state.tele.user.angle = Math.max(state.tele.user.angle - .1, -1)
-      postDrive()
-    };
-
-    var angleRight = function(){
-      state.tele.user.angle = Math.min(state.tele.user.angle + .1, 1)
-      postDrive()
-    };
+        if (needsUpdate) {
+          updateKeyboardControls();
+          keyboardLoop();
+        } else {
+          keyboardLoopRunning = false;
+        }
+      }, 100);
+    }
 
     var updateDriveMode = function(mode){
       state.driveMode = mode;
