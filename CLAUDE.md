@@ -33,7 +33,6 @@ See `CONTROLS.md` for full details.
 
 - `vehicle.py` - Unified vehicle interface (steering, throttle, camera)
 - `actuator.py` - Steering (I2C) and motor (GPIO) control
-- `camera.py` - Pi 5 camera using picamera2
 - `manage.py` - Main entry point
 - `config.py` - Configuration
 - `web_controller/` - Tornado web server for manual control

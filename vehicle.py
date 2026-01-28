@@ -3,10 +3,11 @@ Vehicle class - unified interface for RC car control.
 """
 
 import threading
+import time
 import numpy as np
+from picamera2 import Picamera2
 
 from actuator import PWMSteering, PWMThrottle
-from camera import PiCamera
 import config
 
 
@@ -21,51 +22,29 @@ class Vehicle:
     """
 
     def __init__(self):
-        self._camera = PiCamera(
-            resolution=config.CAMERA_RESOLUTION,
-            framerate=config.CAMERA_FRAMERATE,
-        )
+        # Steering and throttle
         self._steering = PWMSteering(
             channel=config.STEERING_CHANNEL,
             left_pulse=config.STEERING_LEFT_PWM,
             right_pulse=config.STEERING_RIGHT_PWM,
         )
         self._throttle = PWMThrottle()
-        self._camera_thread = None
-        self._running = False
-
         self.current_steering = 0.0
         self.current_throttle = 0.0
+
+        # Camera
+        self._picam = None
+        self._frame = None
+        self._frame_lock = threading.Lock()
+        self._camera_thread = None
+
+        self._running = False
 
     @property
     def is_running(self) -> bool:
         return self._running
 
-    def start(self):
-        """Start camera thread and initialize to stopped state."""
-        if self._running:
-            return
-
-        self._camera_thread = threading.Thread(target=self._camera.update, daemon=True)
-        self._camera_thread.start()
-
-        self._steering.run(0.0)
-        self._throttle.run(0.0)
-
-        self._running = True
-
-    def shutdown(self):
-        """Stop motors, center steering, release resources."""
-        if not self._running:
-            return
-
-        self._running = False
-        self._throttle.shutdown()
-        self._steering.shutdown()
-        self._camera.shutdown()
-
-        self.current_steering = 0.0
-        self.current_throttle = 0.0
+    # --- Steering and throttle ---
 
     def steer(self, angle: float):
         """Set steering: -1.0 (left) to 1.0 (right)."""
@@ -93,9 +72,60 @@ class Vehicle:
         self.throttle(0.0)
         self.steer(0.0)
 
+    # --- Camera ---
+
+    def _camera_loop(self):
+        """Background thread that continuously captures frames."""
+        height, width = config.CAMERA_RESOLUTION
+        self._picam = Picamera2()
+        cam_config = self._picam.create_video_configuration(
+            main={"size": (width, height), "format": "RGB888"}
+        )
+        self._picam.configure(cam_config)
+        self._picam.start()
+        time.sleep(0.5)  # Camera warmup
+
+        while self._running:
+            try:
+                frame = self._picam.capture_array()
+                with self._frame_lock:
+                    self._frame = frame
+            except Exception as e:
+                print(f"Camera error: {e}")
+                time.sleep(0.1)
+
     def get_frame(self) -> np.ndarray | None:
         """Get latest camera frame (H, W, 3) RGB array, or None if not ready."""
-        return self._camera.run_threaded()
+        with self._frame_lock:
+            return self._frame
+
+    # --- Lifecycle ---
+
+    def start(self):
+        """Start camera thread and initialize to stopped state."""
+        if self._running:
+            return
+
+        self._running = True
+
+        self._camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
+        self._camera_thread.start()
+
+        self._steering.run(0.0)
+        self._throttle.run(0.0)
+
+    def shutdown(self):
+        """Stop motors, center steering, release resources."""
+        if not self._running:
+            return
+
+        self.stop()
+        self._running = False
+
+        if self._picam:
+            self._picam.stop()
+            self._picam.close()
+            self._picam = None
 
     def __enter__(self):
         self.start()
