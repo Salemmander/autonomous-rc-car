@@ -1,5 +1,5 @@
 """
-Donkey Car Configuration for Raspberry Pi 5
+Configuration for Raspberry Pi 5
 
 PWM values calibrated for XiaoR GEEK F1 hardware.
 """
@@ -16,6 +16,11 @@ MAX_LOOPS = None  # Run indefinitely
 # Camera (Pi 5 with picamera2)
 CAMERA_RESOLUTION = (120, 160)  # (height, width)
 CAMERA_FRAMERATE = DRIVE_LOOP_HZ
+
+# Data collection
+DATA_PATH = os.path.join(CAR_PATH, "data")
+RECORD_FPS = 10
+JPEG_QUALITY = 70
 
 # Steering - I2C servo on channel 1
 STEERING_CHANNEL = 1

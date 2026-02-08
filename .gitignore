@@ -10,3 +10,6 @@ pi/
 # SSL certs (generated at runtime)
 web_controller/server.crt
 web_controller/server.key
+
+# Training data
+data/

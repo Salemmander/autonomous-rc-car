@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-Donkey Car - Manual Driving Controller for Raspberry Pi 5
+Autonomous RC Car - Manual Driving Controller for Raspberry Pi 5
 
-Simplified version that only supports manual web-based driving.
-No AI/autopilot features - just basic remote control.
+Web-based manual driving with optional data collection for training.
 
 Usage:
     python3 manage.py drive
@@ -14,18 +13,20 @@ import time
 import threading
 
 import config as cfg
+from datastore import DataStore
 from vehicle import Vehicle
 from web_controller.web import LocalWebController
 
 
 def drive():
     """Run the vehicle in manual drive mode."""
-    print("Initializing Donkey Car...")
+    print("Initializing vehicle...")
     print(f"  Steering: I2C channel {cfg.STEERING_CHANNEL}, PWM {cfg.STEERING_LEFT_PWM}-{cfg.STEERING_RIGHT_PWM}")  # fmt: skip
     print("  Throttle: GPIO motor control (pins 13, 16, 19)")
 
     vehicle = Vehicle()
     ctr = LocalWebController()
+    datastore = DataStore()
 
     print("Starting vehicle...")
     vehicle.start()
@@ -40,6 +41,8 @@ def drive():
     print("Press Ctrl+C to stop\n")
 
     loop_time = 1.0 / cfg.DRIVE_LOOP_HZ
+    record_every_n = max(1, cfg.DRIVE_LOOP_HZ // cfg.RECORD_FPS)
+    loop_count = 0
 
     try:
         while True:
@@ -48,6 +51,16 @@ def drive():
             img = vehicle.get_frame()
             angle, throttle, mode, recording = ctr.run_threaded(img)
             vehicle.drive(angle, throttle)
+
+            if recording and not datastore.is_recording:
+                datastore.start_session()
+            elif not recording and datastore.is_recording:
+                datastore.stop_session()
+
+            if recording and loop_count % record_every_n == 0:
+                datastore.record(img, angle, throttle)
+
+            loop_count += 1
 
             elapsed = time.time() - start
             sleep_time = loop_time - elapsed
@@ -58,6 +71,8 @@ def drive():
         print("\n\nShutting down...")
 
     finally:
+        if datastore.is_recording:
+            datastore.stop_session()
         vehicle.shutdown()
         print("Goodbye!")
 

@@ -71,8 +71,8 @@ var driveHandler = new function() {
     var setBindings = function() {
 
       $(document).keydown(function(e) {
-          if(e.which == 32) { toggleBrake() }  // 'space'  brake
-          if(e.which == 82) { toggleRecording() }  // 'r'  toggle recording
+          if(e.which == 32) { toggleRecording() }  // 'space'  toggle recording
+          if(e.which == 66) { toggleBrake() }  // 'b'  brake
           if(e.which == 65) { updateDriveMode('auto') } // 'a' turn on auto mode
           if(e.which == 68) { updateDriveMode('user') } // 'd' turn on manual mode
           if(e.which == 83) { updateDriveMode('auto_angle') } // 's' turn on auto angle mode
@@ -219,12 +219,12 @@ var driveHandler = new function() {
 
       if (state.recording) {
         $('#record_button')
-          .html('Stop Recording (r)')
+          .html('Stop Recording (space)')
           .removeClass('btn-info')
           .addClass('btn-warning').end()
       } else {
         $('#record_button')
-          .html('Start Recording (r)')
+          .html('Start Recording (space)')
           .removeClass('btn-warning')
           .addClass('btn-info').end()
       }

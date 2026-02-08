@@ -8,7 +8,6 @@ steering/throttle commands via POST requests.
 import os
 import io
 import time
-import threading
 import tornado.ioloop
 import tornado.web
 import tornado.gen
@@ -20,6 +19,7 @@ import numpy as np
 def get_ip_address():
     """Get the local IP address."""
     import socket
+
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -36,9 +36,9 @@ def arr_to_binary(arr):
         # Return a small black image if no frame available
         arr = np.zeros((120, 160, 3), dtype=np.uint8)
 
-    img = Image.fromarray(arr.astype('uint8'))
+    img = Image.fromarray(arr.astype("uint8"))
     buf = io.BytesIO()
-    img.save(buf, format='JPEG', quality=70)
+    img.save(buf, format="JPEG", quality=70)
     return buf.getvalue()
 
 
@@ -52,16 +52,16 @@ class LocalWebController(tornado.web.Application):
     port = 8887
 
     def __init__(self):
-        print('Starting Donkey Server...')
+        print("Starting web server...")
 
         this_dir = os.path.dirname(os.path.realpath(__file__))
-        self.static_file_path = os.path.join(this_dir, 'templates', 'static')
-        self.template_path = os.path.join(this_dir, 'templates')
+        self.static_file_path = os.path.join(this_dir, "templates", "static")
+        self.template_path = os.path.join(this_dir, "templates")
 
         # Control state
         self.angle = 0.0
         self.throttle = 0.0
-        self.mode = 'user'
+        self.mode = "user"
         self.recording = False
 
         # Camera frame
@@ -69,29 +69,33 @@ class LocalWebController(tornado.web.Application):
 
         # Network info
         self.ip_address = get_ip_address()
-        self.access_url = f'https://{self.ip_address}:{self.port}'
+        self.access_url = f"https://{self.ip_address}:{self.port}"
 
         handlers = [
             (r"/", tornado.web.RedirectHandler, dict(url="/drive")),
             (r"/drive", DriveAPI),
             (r"/video", VideoAPI),
-            (r"/static/(.*)", tornado.web.StaticFileHandler, {"path": self.static_file_path}),
+            (
+                r"/static/(.*)",
+                tornado.web.StaticFileHandler,
+                {"path": self.static_file_path},
+            ),
         ]
 
         settings = {
-            'debug': True,
-            'template_path': self.template_path,
+            "debug": True,
+            "template_path": self.template_path,
         }
 
         super().__init__(handlers, **settings)
 
     def say_hello(self):
         """Print connection info."""
-        print(f"\n{'='*50}")
-        print(f"Donkey Car Web Controller")
-        print(f"{'='*50}")
+        print(f"\n{'=' * 50}")
+        print("Web Controller")
+        print(f"{'=' * 50}")
         print(f"Open in browser: {self.access_url}")
-        print(f"{'='*50}\n")
+        print(f"{'=' * 50}\n")
 
     def update(self):
         """Start the Tornado web server (blocking)."""
@@ -106,10 +110,13 @@ class LocalWebController(tornado.web.Application):
         if not os.path.exists(cert_file) or not os.path.exists(key_file):
             self._generate_ssl_cert(cert_file, key_file)
 
-        server = httpserver.HTTPServer(self, ssl_options={
-            "certfile": cert_file,
-            "keyfile": key_file,
-        })
+        server = httpserver.HTTPServer(
+            self,
+            ssl_options={
+                "certfile": cert_file,
+                "keyfile": key_file,
+            },
+        )
         server.listen(self.port)
 
         instance = tornado.ioloop.IOLoop.instance()
@@ -120,14 +127,27 @@ class LocalWebController(tornado.web.Application):
         """Generate a self-signed SSL certificate."""
         print("Generating self-signed SSL certificate...")
         import subprocess
-        subprocess.run([
-            "openssl", "req", "-x509", "-newkey", "rsa:2048",
-            "-keyout", key_file,
-            "-out", cert_file,
-            "-days", "365",
-            "-nodes",
-            "-subj", "/CN=donkeycar"
-        ], check=True, capture_output=True)
+
+        subprocess.run(
+            [
+                "openssl",
+                "req",
+                "-x509",
+                "-newkey",
+                "rsa:2048",
+                "-keyout",
+                key_file,
+                "-out",
+                cert_file,
+                "-days",
+                "365",
+                "-nodes",
+                "-subj",
+                "/CN=rc-car",
+            ],
+            check=True,
+            capture_output=True,
+        )
         print("SSL certificate generated.")
 
     def run_threaded(self, img_arr=None):
@@ -162,17 +182,19 @@ class DriveAPI(tornado.web.RequestHandler):
     def post(self):
         """Receive control commands."""
         data = tornado.escape.json_decode(self.request.body)
-        self.application.angle = float(data.get('angle', 0))
-        self.application.throttle = float(data.get('throttle', 0))
-        self.application.mode = data.get('drive_mode', 'user')
-        self.application.recording = data.get('recording', False)
+        self.application.angle = float(data.get("angle", 0))
+        self.application.throttle = float(data.get("throttle", 0))
+        self.application.mode = data.get("drive_mode", "user")
+        self.application.recording = data.get("recording", False)
 
 
 class VideoAPI(tornado.web.RequestHandler):
     """Serve MJPEG video stream."""
 
     async def get(self):
-        self.set_header("Content-type", "multipart/x-mixed-replace;boundary=--boundarydonotcross")
+        self.set_header(
+            "Content-type", "multipart/x-mixed-replace;boundary=--boundarydonotcross"
+        )
 
         served_image_timestamp = time.time()
         my_boundary = "--boundarydonotcross\r\n"
