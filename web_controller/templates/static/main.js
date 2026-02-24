@@ -18,7 +18,7 @@ var driveHandler = new function() {
                   'session': 'None',
                   'lag': 0,
                   'controlMode': 'joystick',
-                  'maxThrottle' : 1,
+                  'maxThrottle' : 0.35,
                   'throttleMode' : 'user',
                   }
 
