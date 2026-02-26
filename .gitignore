@@ -13,6 +13,7 @@ src/car/web/server.key
 
 # Training data
 data/
+data.zip
 
 # Model Weights
 models/
