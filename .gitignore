@@ -8,8 +8,8 @@ __pycache__/
 pi/
 
 # SSL certs (generated at runtime)
-web_controller/server.crt
-web_controller/server.key
+src/car/web/server.crt
+src/car/web/server.key
 
 # Training data
 data/

@@ -17,6 +17,7 @@ This project replaces the proprietary 32-bit XiaoRGEEK Python libraries with pur
 See `CONTROLS.md` for full details.
 
 ### Steering (I2C)
+
 - Address: 0x17
 - Command: 0xFF
 - Data: [channel=1, value]
@@ -24,6 +25,7 @@ See `CONTROLS.md` for full details.
 - Note: Send commands 3x due to buffer quirk
 
 ### Motors (GPIO)
+
 - Enable/PWM: GPIO 13
 - Direction: GPIO 19 (IN1), GPIO 16 (IN2)
 - Forward: IN1=HIGH, IN2=LOW
@@ -31,12 +33,13 @@ See `CONTROLS.md` for full details.
 
 ## Key Files
 
-- `vehicle.py` - Unified vehicle interface (steering, throttle, camera)
-- `actuator.py` - Steering (I2C) and motor (GPIO) control
-- `manage.py` - Main entry point
-- `config.py` - Configuration
-- `web_controller/` - Tornado web server for manual control
-- `scripts/` - Test and debug scripts
+- `main.py` - Entry point
+- `src/car/vehicle.py` - Unified vehicle interface (steering, throttle, camera)
+- `src/car/actuator.py` - Steering (I2C) and motor (GPIO) control
+- `src/car/config.py` - Configuration
+- `src/car/datastore.py` - Data collection (recording sessions)
+- `src/car/web/` - Tornado web server for manual control
+- `src/training/` - Model training code
 - `pi/` - Original XiaoRGEEK code backup (reference only)
 
 ## Development
@@ -45,14 +48,14 @@ See `CONTROLS.md` for full details.
 
 ```bash
 cd ~/autonomous-rc-car
-uv run python manage.py drive
+uv run python main.py drive
 ```
 
 ### Testing Actuators
 
 ```bash
-uv run python actuator.py           # Test steering only
-uv run python actuator.py --throttle  # Test steering and motors
+uv run python src/car/actuator.py           # Test steering only
+uv run python src/car/actuator.py --throttle  # Test steering and motors
 ```
 
 ### Dependencies

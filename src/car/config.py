@@ -7,7 +7,7 @@ PWM values calibrated for XiaoR GEEK F1 hardware.
 import os
 
 # Paths
-CAR_PATH = os.path.dirname(os.path.realpath(__file__))
+CAR_PATH = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
 # Vehicle loop
 DRIVE_LOOP_HZ = 20

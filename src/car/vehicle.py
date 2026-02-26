@@ -7,8 +7,8 @@ import time
 import numpy as np
 from picamera2 import Picamera2
 
-from actuator import PWMSteering, PWMThrottle
-import config
+from src.car import config
+from src.car.actuator import PWMSteering, PWMThrottle
 
 
 class Vehicle:

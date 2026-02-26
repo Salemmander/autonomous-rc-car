@@ -5,17 +5,17 @@ Autonomous RC Car - Manual Driving Controller for Raspberry Pi 5
 Web-based manual driving with optional data collection for training.
 
 Usage:
-    python3 manage.py drive
+    python3 main.py drive
 """
 
 import sys
 import time
 import threading
 
-import config as cfg
-from datastore import DataStore
-from vehicle import Vehicle
-from web_controller.web import LocalWebController
+from src.car import config as cfg
+from src.car.datastore import DataStore
+from src.car.vehicle import Vehicle
+from src.car.web import LocalWebController
 
 
 def drive():

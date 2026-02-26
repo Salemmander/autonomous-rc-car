@@ -14,7 +14,7 @@ from datetime import datetime
 
 from PIL import Image
 
-import config as cfg
+from src.car import config as cfg
 
 
 class DataStore:
