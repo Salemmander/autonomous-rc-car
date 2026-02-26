@@ -6,9 +6,10 @@ Input images are cropped (top 30% removed) in the data loader before being
 passed to this model. Converted to YCbCr color space.
 """
 
+from src.training.train import Trainer
 import torch
 import torch.nn as nn
-# import torchvision.transforms.
+from torchvision.transforms import Compose, ToTensor, Lambda
 
 
 class PilotNet(nn.Module):
@@ -57,12 +58,28 @@ class PilotNet(nn.Module):
 
 
 if __name__ == "__main__":
-    # TODO: Wire up training for PilotNet
-    # 1. Build transform pipeline (torchvision.transforms.Compose):
-    #    - Crop top 30% of image (remove ceiling/sky) via Lambda
-    #    - Convert RGB to YCbCr via Lambda
-    #    - ToTensor() (scales to [0,1])
-    # 2. Create PilotNet() and Trainer with hardcoded hyperparams
-    # 3. Call trainer.train()
-    # Run with: uv run python -m src.training.pilotnet
-    pass
+    MAX_EPOCHS = 200
+    PATIENCE = 10
+    BATCH_SIZE = 64
+    LR = 0.001
+    VAL_SPLIT = 0.2
+
+    transform = Compose(
+        [
+            Lambda(
+                lambda img: img.crop(
+                    (0, int(img.size[1] * 0.3), img.size[0], img.size[1])
+                )
+            ),
+            Lambda(lambda img: img.convert("YCbCr")),
+            ToTensor(),
+        ]
+    )
+
+    orig_height, orig_width = 120, 160
+
+    model = PilotNet(int(orig_height * 0.7), orig_width)
+    trainer = Trainer(
+        model, "data/", transform, MAX_EPOCHS, PATIENCE, BATCH_SIZE, LR, VAL_SPLIT
+    )
+    trainer.train()

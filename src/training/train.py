@@ -8,12 +8,21 @@ from datetime import datetime
 
 class Trainer:
     def __init__(
-        self, model, data_path, transform, epochs, batch_size, lr, val_split
+        self,
+        model,
+        data_path,
+        transform,
+        max_epochs: int,
+        patience: int,
+        batch_size: int,
+        lr: float,
+        val_split: float,
     ) -> None:
         self.model = model
         self.data_path = data_path
         self.transform = transform
-        self.epochs = epochs
+        self.max_epochs = max_epochs
+        self.patience = patience
         self.batch_size = batch_size
         self.lr = lr
         self.val_split = val_split
@@ -33,8 +42,10 @@ class Trainer:
     def train(self, output="models/"):
         os.makedirs(output, exist_ok=True)
         best_val_loss = float("inf")
+        epochs_without_improvement = 0
+        epoch = 0
 
-        for epoch in range(self.epochs):
+        while epoch < self.max_epochs and epochs_without_improvement < self.patience:
             self.model.train()
             train_loss = 0.0
             for images, steering in self.train_loader:
@@ -62,12 +73,21 @@ class Trainer:
             avg_val_loss = val_loss / len(self.val_loader)
 
             print(
-                f"Epoch {epoch + 1}/{self.epochs} - train_loss: {avg_train_loss:.4f}, val_loss: {avg_val_loss:.4f}"
+                f"Epoch {epoch + 1} - train_loss: {avg_train_loss:.4f}, val_loss: {avg_val_loss:.4f}"
             )
 
             if avg_val_loss < best_val_loss:
                 best_val_loss = avg_val_loss
+                epochs_without_improvement = 0
                 torch.save(
                     self.model.state_dict(), os.path.join(output, self.model_name)
                 )
+            else:
+                epochs_without_improvement += 1
+            epoch += 1
+
+        if epochs_without_improvement >= self.patience:
+            print(
+                f"Early stopping at epoch {epoch} (no improvement for {self.patience} epochs)"
+            )
         print(f"Training complete. Best val loss: {best_val_loss:.4f}")
