@@ -45,3 +45,16 @@ class PilotNet(nn.Module):
         x = self.fc_layers(x)
         steering_angle = self.output(x)
         return steering_angle
+
+
+if __name__ == "__main__":
+    # TODO: Wire up training for PilotNet
+    # 1. Build transform pipeline (torchvision.transforms.Compose):
+    #    - Crop top 30% of image (remove ceiling/sky) via Lambda
+    #    - Resize to 66x200
+    #    - Convert RGB to YCbCr via Lambda
+    #    - ToTensor() (scales to [0,1])
+    # 2. Create PilotNet() and Trainer with hardcoded hyperparams
+    # 3. Call trainer.train()
+    # Run with: uv run python -m src.training.pilotnet
+    pass
