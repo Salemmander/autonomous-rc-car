@@ -10,8 +10,22 @@ dependencies = [
   "numpy>=2.0.0",
   "pillow>=12.1.0",
   "smbus2>=0.5.0",
+  "torch",
+  "torchvision",
   "tornado>=6.5.4",
 ]
 
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130" }]
+torchvision = [{ index = "pytorch-cu130" }]
+
 [project.scripts]
 drive = "main:main"
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv]
+index-strategy = "unsafe-best-match"
