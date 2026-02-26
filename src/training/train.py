@@ -27,6 +27,7 @@ class Trainer:
         self.lr = lr
         self.val_split = val_split
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Device: {self.device}")
         self.model = self.model.to(self.device)
         dataset = DrivingDataset(self.data_path, self.transform)
         val_size = int(len(dataset) * self.val_split)
