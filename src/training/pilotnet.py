@@ -56,6 +56,20 @@ class PilotNet(nn.Module):
         steering_angle = self.output(x)
         return steering_angle
 
+    @property
+    def transform(self):
+        return Compose(
+            [
+                Lambda(
+                    lambda img: img.crop(
+                        (0, int(img.size[1] * 0.3), img.size[0], img.size[1])
+                    )
+                ),
+                Lambda(lambda img: img.convert("YCbCr")),
+                ToTensor(),
+            ]
+        )
+
 
 if __name__ == "__main__":
     MAX_EPOCHS = 200
@@ -64,22 +78,10 @@ if __name__ == "__main__":
     LR = 0.001
     VAL_SPLIT = 0.2
 
-    transform = Compose(
-        [
-            Lambda(
-                lambda img: img.crop(
-                    (0, int(img.size[1] * 0.3), img.size[0], img.size[1])
-                )
-            ),
-            Lambda(lambda img: img.convert("YCbCr")),
-            ToTensor(),
-        ]
-    )
-
     orig_height, orig_width = 120, 160
 
     model = PilotNet(int(orig_height * 0.7), orig_width)
     trainer = Trainer(
-        model, "data/", transform, MAX_EPOCHS, PATIENCE, BATCH_SIZE, LR, VAL_SPLIT
+        model, "data/", model.transform, MAX_EPOCHS, PATIENCE, BATCH_SIZE, LR, VAL_SPLIT
     )
     trainer.train()

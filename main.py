@@ -12,17 +12,18 @@ import sys
 import time
 import threading
 
+import torch
+from PIL import Image
 from src.car import config as cfg
 from src.car.datastore import DataStore
 from src.car.vehicle import Vehicle
 from src.car.web import LocalWebController
+from src.training.pilotnet import PilotNet
 
 
 def drive():
     """Run the vehicle in manual drive mode."""
     print("Initializing vehicle...")
-    print(f"  Steering: I2C channel {cfg.STEERING_CHANNEL}, PWM {cfg.STEERING_LEFT_PWM}-{cfg.STEERING_RIGHT_PWM}")  # fmt: skip
-    print("  Throttle: GPIO motor control (pins 13, 16, 19)")
 
     vehicle = Vehicle()
     ctr = LocalWebController()
@@ -74,13 +75,51 @@ def drive():
         if datastore.is_recording:
             datastore.stop_session()
         vehicle.shutdown()
-        print("Goodbye!")
+
+
+def run_pilotnet():
+    print("Initializing Vehicle with PilotNet")
+
+    FIXED_THROTTLE = 0.2
+
+    vehicle = Vehicle()
+
+    print("Loading PilotNet")
+    model = PilotNet(input_height=84, input_width=160)
+    transform = model.transform
+    model_path = "models/pilotnet_2026-02-26_12-55-57.pth"
+    model.load_state_dict(torch.load(model_path, map_location="cpu"))
+    model.eval()
+
+    print("Starting vehicle...")
+    vehicle.start()
+
+    print("\nStarting control loop...")
+    print("Press Ctrl+C to stop\n")
+
+    try:
+        with torch.no_grad():
+            while True:
+                frame = vehicle.get_frame()
+                if frame is None:
+                    continue
+                img = transform(Image.fromarray(frame)).unsqueeze(0)
+
+                steering = model(img).item()
+                vehicle.drive(steering, FIXED_THROTTLE)
+
+    except KeyboardInterrupt:
+        print("\n\nShutting Down..")
+    finally:
+        vehicle.shutdown()
 
 
 def main():
     """Main entry point."""
     if "drive" in sys.argv or len(sys.argv) == 1:
         drive()
+    elif "pilotnet" in sys.argv:
+        run_pilotnet()
     else:
         print(__doc__)
 
