@@ -38,8 +38,7 @@ class PilotNet(nn.Module):
         self.output = nn.Linear(10, 1)
 
     def forward(self, x):
-        # Normalize
-        x = x / 255.0
+        # No normalize step here as it happens in the transform with ToTensor()
 
         x = self.conv_layers(x)
         x = x.flatten(1)
