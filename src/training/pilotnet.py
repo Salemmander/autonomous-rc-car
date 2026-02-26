@@ -2,16 +2,20 @@
 PilotNet model for behavioral cloning.
 Based on NVIDIA's "End to End Learning for Self-Driving Cars" (2016).
 
-Input images are cropped (top 30% removed) and resized to 66x200 in the
-data loader before being passed to this model. Converted to YUV color space.
+Input images are cropped (top 30% removed) in the data loader before being
+passed to this model. Converted to YCbCr color space.
 """
 
+import torch
 import torch.nn as nn
+# import torchvision.transforms.
 
 
 class PilotNet(nn.Module):
-    def __init__(self):
+    def __init__(self, input_height: int, input_width: int):
         super().__init__()
+        self.input_height = input_height
+        self.input_width = input_width
         self.conv_layers = nn.Sequential(
             nn.Conv2d(3, 24, kernel_size=5, stride=2),
             nn.ReLU(),
@@ -25,8 +29,13 @@ class PilotNet(nn.Module):
             nn.ReLU(),
         )
 
+        # get conv_layers output size
+        dummy = torch.zeros(1, 3, self.input_height, self.input_width)
+        conv_out = self.conv_layers(dummy)
+        conv_out_size = conv_out.flatten(1).size(1)
+
         self.fc_layers = nn.Sequential(
-            nn.Linear(1152, 1164),
+            nn.Linear(conv_out_size, 1164),
             nn.ReLU(),
             nn.Linear(1164, 100),
             nn.ReLU(),
@@ -51,7 +60,6 @@ if __name__ == "__main__":
     # TODO: Wire up training for PilotNet
     # 1. Build transform pipeline (torchvision.transforms.Compose):
     #    - Crop top 30% of image (remove ceiling/sky) via Lambda
-    #    - Resize to 66x200
     #    - Convert RGB to YCbCr via Lambda
     #    - ToTensor() (scales to [0,1])
     # 2. Create PilotNet() and Trainer with hardcoded hyperparams
