@@ -41,9 +41,7 @@ class Trainer:
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
         date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self.model_name = f"{self.model.__class__.__name__.lower()}_{date}.pth"
-        self.metrics_name = (
-            f"{self.model.__class__.__name__.lower()}_{date}_metrics.csv"
-        )
+        self.metrics_name = self.model_name.replace(".pth", "_metrics.csv")
 
     def train(self, output="models/"):
         os.makedirs(output, exist_ok=True)
