@@ -2,6 +2,7 @@ from .dataset import DrivingDataset
 import csv
 import torch
 from torch.utils.data import random_split, DataLoader
+from tqdm import tqdm
 import torch.nn as nn
 import os
 from datetime import datetime
@@ -58,7 +59,8 @@ class Trainer:
             self.model.train()
             train_loss = 0.0
             train_mae = 0.0
-            for images, steering in self.train_loader:
+            pbar = tqdm(self.train_loader, desc=f"Epoch {epoch + 1} [train]")
+            for batch_idx, (images, steering) in enumerate(pbar, 1):
                 images = images.to(self.device)
                 steering = steering.to(self.device, dtype=torch.float32).unsqueeze(1)
                 self.optimizer.zero_grad()
@@ -68,6 +70,7 @@ class Trainer:
                 self.optimizer.step()
                 train_loss += loss.item()
                 train_mae += self.mae(pred, steering).item()
+                pbar.set_postfix(loss=train_loss / batch_idx, mae=train_mae / batch_idx)
 
             avg_train_loss = train_loss / len(self.train_loader)
             avg_train_mae = train_mae / len(self.train_loader)
@@ -75,14 +78,16 @@ class Trainer:
             self.model.eval()
             val_loss = 0.0
             val_mae = 0.0
+            pbar = tqdm(self.val_loader, desc=f"Epoch {epoch + 1} [val]")
             with torch.no_grad():
-                for images, steering in self.val_loader:
+                for batch_idx, (images, steering) in enumerate(pbar, 1):
                     images = images.to(self.device)
                     steering = steering.to(self.device, dtype=torch.float32).unsqueeze(1)  # fmt:skip
                     pred = self.model(images)
                     loss = self.criterion(pred, steering)
                     val_loss += loss.item()
                     val_mae += self.mae(pred, steering).item()
+                    pbar.set_postfix(loss=val_loss / batch_idx, mae=val_mae / batch_idx)
 
             avg_val_loss = val_loss / len(self.val_loader)
             avg_val_mae = val_mae / len(self.val_loader)

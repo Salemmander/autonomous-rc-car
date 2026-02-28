@@ -13,6 +13,7 @@ dependencies = [
   "torch",
   "torchvision",
   "tornado>=6.5.4",
+  "tqdm>=4.67.3",
 ]
 
 [tool.uv.sources]
