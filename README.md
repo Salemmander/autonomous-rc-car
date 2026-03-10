@@ -2,7 +2,9 @@
 
 End-to-end self-driving RC car using behavioral cloning on a Raspberry Pi 5.
 
-[![Demo Video](https://img.youtube.com/vi/KV0Y-V7XpoU/hqdefault.jpg)](https://youtu.be/KV0Y-V7XpoU)
+[![Watch the demo](https://img.youtube.com/vi/KV0Y-V7XpoU/hqdefault.jpg)](https://youtu.be/KV0Y-V7XpoU)
+
+**[Watch the demo video](https://youtu.be/KV0Y-V7XpoU)**
 
 ## Overview
 
