@@ -29,7 +29,7 @@ def draw_trajectory(frame, steering, throttle, num_points=30, step_size=80):
     h, w, _ = frame.shape
 
     x = y = heading = 0
-    curvature_factor = 0.1
+    curvature_factor = 0.15
 
     points = []
 
@@ -37,7 +37,8 @@ def draw_trajectory(frame, steering, throttle, num_points=30, step_size=80):
         heading += steering * curvature_factor
         x += sin(heading) * (step_size * throttle)
         y += cos(heading) * (step_size * throttle)
-        coords = (int(w // 2 + x), int(h - y))
+        scale = 1.0 / (1.0 + y * 0.01)
+        coords = (int(w // 2 + x * scale), int(h - y * scale))
         points.append(coords)
 
     if len(points) < 2:
@@ -45,8 +46,8 @@ def draw_trajectory(frame, steering, throttle, num_points=30, step_size=80):
 
     points = np.array(points, dtype=np.int32)
 
-    cv2.polylines(frame, [points], isClosed=False, color=(200, 150, 0), thickness=6)
-    cv2.polylines(frame, [points], isClosed=False, color=(255, 200, 50), thickness=2)
+    cv2.polylines(frame, [points], isClosed=False, color=(0, 150, 200), thickness=6)
+    cv2.polylines(frame, [points], isClosed=False, color=(50, 200, 255), thickness=2)
 
     return frame
 
