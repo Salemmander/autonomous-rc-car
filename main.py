@@ -46,8 +46,8 @@ def draw_trajectory(frame, steering, throttle, num_points=30, step_size=80):
 
     points = np.array(points, dtype=np.int32)
 
-    cv2.polylines(frame, [points], isClosed=False, color=(0, 150, 200), thickness=6)
-    cv2.polylines(frame, [points], isClosed=False, color=(50, 200, 255), thickness=2)
+    cv2.polylines(frame, [points], isClosed=False, color=(0, 150, 200), thickness=20)
+    cv2.polylines(frame, [points], isClosed=False, color=(50, 200, 255), thickness=10)
 
     return frame
 
