@@ -29,7 +29,7 @@ def draw_trajectory(frame, steering, throttle, num_points=30, step_size=80):
     h, w, _ = frame.shape
 
     x = y = heading = 0
-    curvature_factor = 0.05
+    curvature_factor = 0.07
 
     points = []
 
