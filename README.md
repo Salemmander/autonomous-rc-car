@@ -2,14 +2,14 @@
 
 End-to-end self-driving RC car using behavioral cloning on a Raspberry Pi 5.
 
-[![Demo Video](https://img.youtube.com/vi/KV0Y-V7XpoU/0.jpg)](https://youtu.be/KV0Y-V7XpoU)
+[![Demo Video](https://img.youtube.com/vi/KV0Y-V7XpoU/hqdefault.jpg)](https://youtu.be/KV0Y-V7XpoU)
 
 ## Overview
 
 This project builds a self-driving RC car from scratch. It replaces the proprietary 32-bit XiaoRGEEK Python libraries with pure Python implementations compatible with the 64-bit Raspberry Pi 5, and adds a complete behavioral cloning pipeline:
 
 1. **Drive manually** via a web-based controller while recording camera frames and steering data
-2. **Train a neural network** (NVIDIA PilotNet) to predict steering from images
+2. **Train a neural network** (based on NVIDIA's [PilotNet](https://arxiv.org/abs/1604.07316)) to predict steering from images
 3. **Deploy on the car** for autonomous driving
 
 The model successfully drives the car around a track in both directions after training on ~10k frames.
