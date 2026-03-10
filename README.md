@@ -2,7 +2,7 @@
 
 End-to-end self-driving RC car using behavioral cloning on a Raspberry Pi 5.
 
-<!-- TODO: Add demo video/photos -->
+[![Demo Video](https://img.youtube.com/vi/KV0Y-V7XpoU/0.jpg)](https://youtu.be/KV0Y-V7XpoU)
 
 ## Overview
 
@@ -56,36 +56,14 @@ Training convergence:
 | 18    | 0.0468     | 0.0509   | 0.1665    | 0.1738  |
 | 28    | 0.0376     | 0.0591   | 0.1478    | 0.1846  |
 
-Val MAE of 0.17 means the model's average steering error is 0.17 on a [-1, 1] scale.
-
 ## Hardware
 
 - **Platform**: XiaoRGEEK F1 RC Car
 - **Controller Board**: PWR.A53.A
 - **Computer**: Raspberry Pi 5 (64-bit)
-- **Camera**: 720p USB webcam (captures at 120x160)
+- **Camera**: 720p USB webcam
 - **Steering**: I2C servo via PWR.A53.A controller
 - **Motors**: GPIO-controlled DC motors
-
-## Project Structure
-
-```
-autonomous-rc-car/
-  main.py                     # Entry point (drive, pilotnet)
-  src/
-    car/
-      vehicle.py              # Unified vehicle interface (steering, throttle, camera)
-      actuator.py             # Steering (I2C) and motor (GPIO) control
-      config.py               # Hardware configuration
-      datastore.py            # Data collection (recording sessions)
-      web/                    # Tornado web server for manual control
-    training/
-      pilotnet.py             # PilotNet model + training entry point
-      train.py                # Reusable Trainer class
-      dataset.py              # DrivingDataset (PyTorch Dataset)
-  data/                       # Recorded driving sessions (gitignored)
-  models/                     # Saved model weights (gitignored)
-```
 
 ## Usage
 
@@ -113,11 +91,11 @@ uv run python main.py pilotnet
 
 Loads the trained model and drives autonomously. Press Ctrl+C to stop.
 
-## Dependencies
+Add `--record` to save onboard 720p video to `recordings/`:
 
-Managed with [uv](https://docs.astral.sh/uv/). The virtual environment on the Pi uses `--system-site-packages` to access system-installed packages (`lgpio`, `picamera2`).
-
-Key Python packages: PyTorch, torchvision, Tornado, Pillow, tqdm
+```bash
+uv run python main.py pilotnet --record
+```
 
 ## Future Improvements
 
