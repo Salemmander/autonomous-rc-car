@@ -14,7 +14,7 @@ DRIVE_LOOP_HZ = 20
 MAX_LOOPS = None  # Run indefinitely
 
 # Camera (Pi 5 with picamera2)
-CAMERA_RESOLUTION = (120, 160)  # (height, width)
+CAMERA_RESOLUTION = (720, 1280)  # (height, width)
 CAMERA_FRAMERATE = DRIVE_LOOP_HZ
 
 # Data collection

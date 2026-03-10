@@ -17,3 +17,6 @@ data.zip
 
 # Model Weights
 models/
+
+# Recordings
+recordings/

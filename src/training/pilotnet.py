@@ -9,7 +9,9 @@ passed to this model. Converted to YCbCr color space.
 from src.training.train import Trainer
 import torch
 import torch.nn as nn
-from torchvision.transforms import Compose, ToTensor, Lambda
+from torchvision.transforms import Compose, Resize, ToTensor, Lambda
+
+INPUT_SIZE = (120, 160)  # (height, width) - model input resolution
 
 
 class PilotNet(nn.Module):
@@ -60,6 +62,7 @@ class PilotNet(nn.Module):
     def transform(self):
         return Compose(
             [
+                Resize(INPUT_SIZE),
                 Lambda(
                     lambda img: img.crop(
                         (0, int(img.size[1] * 0.3), img.size[0], img.size[1])
