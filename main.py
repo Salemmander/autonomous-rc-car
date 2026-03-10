@@ -8,12 +8,11 @@ Usage:
     python3 main.py drive
 """
 
-from math import cos, sin
 import os
 import sys
 import time
 import threading
-import numpy as np
+
 import cv2
 import torch
 from PIL import Image
@@ -22,34 +21,6 @@ from src.car.datastore import DataStore
 from src.car.vehicle import Vehicle
 from src.car.web import LocalWebController
 from src.training.pilotnet import PilotNet
-
-
-def draw_trajectory(frame, steering, throttle, num_points=30, step_size=80):
-
-    h, w, _ = frame.shape
-
-    x = y = heading = 0
-    curvature_factor = 0.07
-
-    points = []
-
-    for _ in range(num_points):
-        heading += steering * curvature_factor
-        x += sin(heading) * (step_size * throttle)
-        y += cos(heading) * (step_size * throttle)
-        scale = 1.0 / (1.0 + y * 0.003)
-        coords = (int(w // 2 + x * scale), int(h - y * scale))
-        points.append(coords)
-
-    if len(points) < 2:
-        return frame
-
-    points = np.array(points, dtype=np.int32)
-
-    cv2.polylines(frame, [points], isClosed=False, color=(0, 150, 200), thickness=20)
-    cv2.polylines(frame, [points], isClosed=False, color=(50, 200, 255), thickness=10)
-
-    return frame
 
 
 def drive():
@@ -147,7 +118,6 @@ def run_pilotnet(record=False):
                 img = transform(Image.fromarray(frame)).unsqueeze(0)
 
                 steering = model(img).item()
-                frame = draw_trajectory(frame, steering, FIXED_THROTTLE)
                 if writer:
                     writer.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
                 vehicle.drive(steering, FIXED_THROTTLE)
