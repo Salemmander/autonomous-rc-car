@@ -32,6 +32,7 @@ class Trainer:
         print(f"Device: {self.device}")
         self.model = self.model.to(self.device)
         dataset = DrivingDataset(self.data_path, self.transform)
+        print(f"Dataset size: {len(dataset)}")
         val_size = int(len(dataset) * self.val_split)
         train_size = len(dataset) - val_size
         train_set, val_set = random_split(dataset, [train_size, val_size])
