@@ -22,15 +22,19 @@ class DrivingDataset(Dataset):
                 for row in reader:
                     image_name, _, steering, _ = row
                     full_path = os.path.join(session, image_name)
-                    self.samples.append((full_path, float(steering)))
+                    self.samples.append((full_path, float(steering), False))
+                    self.samples.append((full_path, float(steering), True))
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        image_path, steering = self.samples[idx]
+        image_path, steering, flip = self.samples[idx]
 
         image = Image.open(image_path)
+        if flip:
+            steering *= -1
+            image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
 
         if self.transform:
             image = self.transform(image)

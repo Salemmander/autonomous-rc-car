@@ -20,3 +20,6 @@ models/
 
 # Recordings
 recordings/
+
+# Claude Code
+.claude/
