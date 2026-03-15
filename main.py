@@ -89,7 +89,7 @@ def run_pilotnet(record=False):
     print("Loading PilotNet")
     model = PilotNet(input_height=84, input_width=160)
     transform = model.transform
-    model_path = "models/pilotnet_2026-02-26_12-55-57.pth"
+    model_path = "models/pilotnet_2026-03-15_19-58-13.pth"
     model.load_state_dict(torch.load(model_path, map_location="cpu"))
     model.eval()
 
