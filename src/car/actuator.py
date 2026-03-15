@@ -48,11 +48,10 @@ class XRServoController:
         Set servo position.
 
         Args:
-            channel: Servo channel (0=throttle, 1=steering)
-            value: PWM value (0=left, 100=center, 200=right for steering)
+            channel: Servo channel (1=steering)
+            value: PWM value (0=full left, 85=center, 170=full right)
 
-        Note: XiaoRGEEK controller has a one-command buffer, so we send
-        the command twice to flush it and execute immediately.
+        Note: Controller has a one-command buffer — send 3x for immediate execution.
         """
         cmd = [channel, int(value)]
         # Send 3 times to ensure command executes immediately
