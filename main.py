@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """
-Autonomous RC Car - Manual Driving Controller for Raspberry Pi 5
+Autonomous RC Car - Raspberry Pi 5
 
-Web-based manual driving with optional data collection for training.
+Xbox controller driving with optional data collection for training.
 
 Usage:
-    python3 main.py drive
+    uv run python main.py drive
 """
 
 import os
 import sys
 import time
-import threading
 
 import cv2
 import torch
@@ -19,7 +18,7 @@ from PIL import Image
 from src.car import config as cfg
 from src.car.datastore import DataStore
 from src.car.vehicle import Vehicle
-from src.car.web import LocalWebController
+from src.car.controller import Controller
 from src.training.pilotnet import PilotNet
 
 
@@ -28,19 +27,15 @@ def drive():
     print("Initializing vehicle...")
 
     vehicle = Vehicle()
-    ctr = LocalWebController()
+    ctr = Controller()
     datastore = DataStore()
 
     print("Starting vehicle...")
     vehicle.start()
 
-    print("Starting web controller...")
-    web_thread = threading.Thread(target=ctr.update, daemon=True)
-    web_thread.start()
-
     time.sleep(1)  # Let threads start
 
-    print("\nStarting control loop...")
+    print("Starting control loop...")
     print("Press Ctrl+C to stop\n")
 
     loop_time = 1.0 / cfg.DRIVE_LOOP_HZ
@@ -52,7 +47,7 @@ def drive():
             start = time.time()
 
             img = vehicle.get_frame()
-            angle, throttle, mode, recording = ctr.run_threaded(img)
+            angle, throttle, recording = ctr.get_input()
             vehicle.drive(angle, throttle)
 
             if recording and not datastore.is_recording:
