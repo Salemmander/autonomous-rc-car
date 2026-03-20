@@ -4,9 +4,13 @@ import threading
 
 class Controller:
     def __init__(
-        self, name="Microsoft Xbox Series S|X Controller", max_throttle=0.35
+        self,
+        name="Microsoft Xbox Series S|X Controller",
+        max_throttle=0.35,
+        steering_deadzone=0.05,
     ) -> None:
         self.max_throttle = max_throttle
+        self.steering_deadzone = steering_deadzone
         devices = [evdev.InputDevice(p) for p in evdev.list_devices()]
         self.steering = 0.0
         self._forward = 0.0
@@ -26,7 +30,12 @@ class Controller:
                 continue
             code = event.code
             if code == 0:
-                self.steering = event.value / 32768
+                raw = event.value / 32768
+                dz = self.steering_deadzone
+                if abs(raw) < dz:
+                    self.steering = 0.0
+                else:
+                    self.steering = (abs(raw) - dz) / (1 - dz) * (1 if raw > 0 else -1)
             elif code == 2:
                 self._reverse = event.value / 1023 * self.max_throttle
                 self.throttle = self._forward - self._reverse
