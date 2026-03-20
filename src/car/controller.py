@@ -35,7 +35,8 @@ class Controller:
                 if abs(raw) < dz:
                     self.steering = 0.0
                 else:
-                    self.steering = (abs(raw) - dz) / (1 - dz) * (1 if raw > 0 else -1)
+                    normalized = (abs(raw) - dz) / (1 - dz)
+                    self.steering = (normalized**2) * (1 if raw > 0 else -1)
             elif code == 2:
                 self._reverse = event.value / 1023 * self.max_throttle
                 self.throttle = self._forward - self._reverse
