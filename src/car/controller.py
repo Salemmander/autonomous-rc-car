@@ -11,6 +11,7 @@ class Controller:
     ) -> None:
         self.max_throttle = max_throttle
         self.steering_deadzone = steering_deadzone
+        self.steering_smoothing = 0.4
         devices = [evdev.InputDevice(p) for p in evdev.list_devices()]
         self.steering = 0.0
         self._forward = 0.0
@@ -33,10 +34,14 @@ class Controller:
                 raw = event.value / 32768
                 dz = self.steering_deadzone
                 if abs(raw) < dz:
-                    self.steering = 0.0
+                    target = 0.0
                 else:
                     normalized = (abs(raw) - dz) / (1 - dz)
-                    self.steering = (normalized**3) * (1 if raw > 0 else -1)
+                    target = (normalized**3) * (1 if raw > 0 else -1)
+                self.steering = (
+                    self.steering * (1 - self.steering_smoothing)
+                    + target * self.steering_smoothing
+                )
             elif code == 2:
                 self._reverse = event.value / 1023 * self.max_throttle
                 self.throttle = self._forward - self._reverse
