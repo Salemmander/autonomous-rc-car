@@ -3,7 +3,10 @@ import threading
 
 
 class Controller:
-    def __init__(self, name="Microsoft Xbox Series S|X Controller") -> None:
+    def __init__(
+        self, name="Microsoft Xbox Series S|X Controller", max_throttle=0.5
+    ) -> None:
+        self.max_throttle = max_throttle
         devices = [evdev.InputDevice(p) for p in evdev.list_devices()]
         self.steering = 0.0
         self._forward = 0.0
@@ -25,10 +28,10 @@ class Controller:
             if code == 0:
                 self.steering = event.value / 32768
             elif code == 2:
-                self._reverse = event.value / 1023
+                self._reverse = event.value / 1023 * self.max_throttle
                 self.throttle = self._forward - self._reverse
             elif code == 5:
-                self._forward = event.value / 1023
+                self._forward = event.value / 1023 * self.max_throttle
                 self.throttle = self._forward - self._reverse
 
     def get_input(self):
