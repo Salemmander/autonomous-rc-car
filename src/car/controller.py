@@ -4,7 +4,7 @@ import threading
 
 class Controller:
     def __init__(
-        self, name="Microsoft Xbox Series S|X Controller", max_throttle=0.5
+        self, name="Microsoft Xbox Series S|X Controller", max_throttle=0.35
     ) -> None:
         self.max_throttle = max_throttle
         devices = [evdev.InputDevice(p) for p in evdev.list_devices()]
