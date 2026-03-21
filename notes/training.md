@@ -11,8 +11,6 @@
 
 ### Near-term
 
-- **Data augmentation**: horizontal flip (negate steering) to double dataset
-  - Do in DrivingDataset.**getitem**, flip image + negate steering
 - **Recovery training**: collect data driving slightly off-track and correcting back
   - Pure data collection strategy, no code changes needed
 - **Throttle output**: expand model to predict steering + throttle (2 outputs)
