@@ -38,9 +38,8 @@ See `CONTROLS.md` for full details.
 - `src/car/actuator.py` - Steering (I2C) and motor (GPIO) control
 - `src/car/config.py` - Configuration
 - `src/car/datastore.py` - Data collection (recording sessions)
-- `src/car/web/` - Tornado web server for manual control
+- `src/car/controller.py` - Xbox controller input
 - `src/training/` - Model training code
-- `pi/` - Original XiaoRGEEK code backup (reference only)
 
 ## Development
 
@@ -64,7 +63,6 @@ Managed with `uv`. The virtual environment uses `--system-site-packages` to acce
 
 ## Notes
 
-- The `pi/` directory contains the original 32-bit code for reference - do not modify
 - Always test motor changes with the car wheels off the ground
 - The I2C controller has a one-command buffer - always send commands 3 times
 - The steering servo stays locked after program exit - power cycle the car to release it

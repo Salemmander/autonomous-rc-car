@@ -10,7 +10,7 @@ End-to-end self-driving RC car using behavioral cloning on a Raspberry Pi 5.
 
 This project builds a self-driving RC car from scratch. It replaces the proprietary 32-bit XiaoRGEEK Python libraries with pure Python implementations compatible with the 64-bit Raspberry Pi 5, and adds a complete behavioral cloning pipeline:
 
-1. **Drive manually** via a web-based controller while recording camera frames and steering data
+1. **Drive manually** via an Xbox controller while recording camera frames and steering data
 2. **Train a neural network** (based on NVIDIA's [PilotNet](https://arxiv.org/abs/1604.07316)) to predict steering from images
 3. **Deploy on the car** for autonomous driving
 
@@ -20,7 +20,7 @@ The model successfully drives the car around a track in both directions after tr
 
 ### Data Collection
 
-The car is driven manually through a web UI served from the Pi. During recording, the front-facing camera captures 120x160 RGB frames at 10 FPS. Each frame is saved as a JPEG alongside a CSV log of timestamped steering and throttle values.
+The car is driven manually with an Xbox controller. During recording, the front-facing camera captures 120x160 RGB frames at 10 FPS. Each frame is saved as a JPEG alongside a CSV log of timestamped steering and throttle values.
 
 ### Training
 
@@ -75,7 +75,7 @@ Training convergence:
 uv run python main.py drive
 ```
 
-Opens a web UI for manual control and optional data recording.
+Drive with an Xbox controller. Press the record button to start/stop data collection.
 
 ### Training (on GPU machine)
 
@@ -98,10 +98,3 @@ Add `--record` to save onboard 720p video to `recordings/`:
 ```bash
 uv run python main.py pilotnet --record
 ```
-
-## Future Improvements
-
-- Horizontal flip augmentation to double training data and balance left/right turns
-- Predict throttle in addition to steering
-- Train on more diverse tracks and lighting conditions
-- Add real-time telemetry overlay during autonomous driving
