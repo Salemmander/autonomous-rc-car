@@ -6,7 +6,7 @@ class Controller:
     def __init__(
         self,
         name="8BitDo Ultimate Wireless / Pro 2 Wired Controller",
-        max_throttle=0.25,
+        max_throttle=0.15,
         steering_deadzone=0.05,
     ) -> None:
         self.max_throttle = max_throttle
