@@ -43,10 +43,10 @@ class Controller:
                     + target * self.steering_smoothing
                 )
             elif code == 2:
-                self._reverse = event.value / 1023 * self.max_throttle
+                self._reverse = event.value / 255 * self.max_throttle
                 self.throttle = self._forward - self._reverse
             elif code == 5:
-                self._forward = event.value / 1023 * self.max_throttle
+                self._forward = event.value / 255 * self.max_throttle
                 self.throttle = self._forward - self._reverse
 
     def get_input(self):
