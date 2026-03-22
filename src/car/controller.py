@@ -5,7 +5,7 @@ import threading
 class Controller:
     def __init__(
         self,
-        name="Xbox Wireless Controller",
+        name="8BitDo Ultimate Wireless / Pro 2 Wired Controller",
         max_throttle=0.35,
         steering_deadzone=0.05,
     ) -> None:
