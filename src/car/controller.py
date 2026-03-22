@@ -5,7 +5,7 @@ import threading
 class Controller:
     def __init__(
         self,
-        name="Microsoft Xbox Series S|X Controller",
+        name="Xbox Wireless Controller",
         max_throttle=0.35,
         steering_deadzone=0.05,
     ) -> None:
