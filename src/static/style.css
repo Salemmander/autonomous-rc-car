@@ -18,7 +18,7 @@ body {
 
 /* -- Throttle bar (left side) -- */
 #throttle-bar {
-  width: 32px;
+  width: 8px;
   height: 70vh;
   background: rgba(255, 255, 255, 0.08);
   border-radius: 6px;
