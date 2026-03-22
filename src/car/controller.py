@@ -7,9 +7,11 @@ class Controller:
         self,
         name="8BitDo Ultimate Wireless / Pro 2 Wired Controller",
         max_throttle=0.3,
+        min_throttle=0.15,
         steering_deadzone=0.15,
     ) -> None:
         self.max_throttle = max_throttle
+        self.min_throttle = min_throttle
         self.steering_deadzone = steering_deadzone
         self.steering_smoothing = 0.6
         devices = [evdev.InputDevice(p) for p in evdev.list_devices()]
@@ -43,10 +45,22 @@ class Controller:
                     + target * self.steering_smoothing
                 )
             elif code == 2:
-                self._reverse = event.value / 255 * self.max_throttle
+                raw = event.value / 255
+                self._reverse = (
+                    0
+                    if raw == 0
+                    else self.min_throttle
+                    + raw * (self.max_throttle - self.min_throttle)
+                )
                 self.throttle = self._forward - self._reverse
             elif code == 5:
-                self._forward = event.value / 255 * self.max_throttle
+                raw = event.value / 255
+                self._forward = (
+                    0
+                    if raw == 0
+                    else self.min_throttle
+                    + raw * (self.max_throttle - self.min_throttle)
+                )
                 self.throttle = self._forward - self._reverse
 
     def get_input(self):
