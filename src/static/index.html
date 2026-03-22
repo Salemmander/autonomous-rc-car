@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>RC Car Dashboard</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="dashboard">
+    <!-- Throttle bar on the left -->
+    <div id="throttle-bar">
+      <div id="throttle-fill"></div>
+      <div id="throttle-center"></div>
+    </div>
+
+    <!-- Video + overlays -->
+    <div id="video-container">
+      <img id="stream" src="/stream">
+      <div id="steering-bar">
+        <div id="steering-marker"></div>
+      </div>
+      <div id="recording-dot"></div>
+    </div>
+  </div>
+
+  <script>
+    const throttleFill = document.getElementById('throttle-fill');
+    const steeringMarker = document.getElementById('steering-marker');
+    const recordingDot = document.getElementById('recording-dot');
+
+    function updateThrottle(value) {
+      const pct = Math.abs(value) * 50;
+      if (value >= 0) {
+        throttleFill.style.top = (50 - pct) + '%';
+        throttleFill.style.height = pct + '%';
+      } else {
+        throttleFill.style.top = '50%';
+        throttleFill.style.height = pct + '%';
+      }
+    }
+
+    function updateSteering(value) {
+      steeringMarker.style.left = ((value + 1) / 2 * 100) + '%';
+    }
+
+    function updateRecording(active) {
+      recordingDot.style.display = active ? 'block' : 'none';
+    }
+
+    setInterval(async () => {
+      try {
+        const res = await fetch('/status');
+        const data = await res.json();
+        updateThrottle(data.throttle);
+        updateSteering(data.steering);
+        updateRecording(data.recording);
+      } catch (e) {}
+    }, 50);
+  </script>
+</body>
+</html>

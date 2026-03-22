@@ -20,6 +20,7 @@ from src.car.datastore import DataStore
 from src.car.vehicle import Vehicle
 from src.car.controller import Controller
 from src.training.pilotnet import PilotNet
+from src.car.stream import start_stream_server
 
 
 def drive():
@@ -32,6 +33,9 @@ def drive():
 
     print("Starting vehicle...")
     vehicle.start()
+
+    print("Starting stream")
+    start_stream_server(vehicle, ctr)
 
     time.sleep(1)  # Let threads start
 
