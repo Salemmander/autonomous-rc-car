@@ -11,7 +11,7 @@ class Controller:
     ) -> None:
         self.max_throttle = max_throttle
         self.steering_deadzone = steering_deadzone
-        self.steering_smoothing = 0.4
+        self.steering_smoothing = 0.6
         devices = [evdev.InputDevice(p) for p in evdev.list_devices()]
         self.steering = 0.0
         self._forward = 0.0
