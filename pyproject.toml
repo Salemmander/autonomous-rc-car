@@ -8,6 +8,7 @@ dependencies = [
   "adafruit-blinka>=8.69.0",
   "adafruit-circuitpython-pca9685>=3.4.20",
   "evdev>=1.9.3",
+  "matplotlib>=3.10.8",
   "numpy>=2.0.0",
   "opencv-python>=4.13.0.92",
   "pillow>=12.1.0",
