@@ -20,16 +20,20 @@ class DrivingDataset(Dataset):
                 reader = csv.reader(f)
                 next(reader)  # skip header row
                 for row in reader:
-                    image_name, _, steering, _ = row
+                    image_name, _, steering, throttle = row
                     full_path = os.path.join(session, image_name)
-                    self.samples.append((full_path, float(steering), False))
-                    self.samples.append((full_path, float(steering), True))
+                    self.samples.append(
+                        (full_path, float(steering), float(throttle), False)
+                    )
+                    self.samples.append(
+                        (full_path, float(steering), float(throttle), True)
+                    )
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        image_path, steering, flip = self.samples[idx]
+        image_path, steering, throttle, flip = self.samples[idx]
 
         image = Image.open(image_path)
         if flip:
@@ -38,4 +42,4 @@ class DrivingDataset(Dataset):
 
         if self.transform:
             image = self.transform(image)
-        return image, steering
+        return image, steering, throttle

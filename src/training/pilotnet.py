@@ -47,7 +47,7 @@ class PilotNet(nn.Module):
             nn.Linear(50, 10),
             nn.ReLU(),
         )
-        self.output = nn.Linear(10, 1)
+        self.output = nn.Linear(10, 2)
 
     def forward(self, x):
         # No normalize step here as it happens in the transform with ToTensor()
@@ -55,8 +55,8 @@ class PilotNet(nn.Module):
         x = self.conv_layers(x)
         x = x.flatten(1)
         x = self.fc_layers(x)
-        steering_angle = self.output(x)
-        return steering_angle
+        steering_angle, throttle = self.output(x).unbind(dim=1)
+        return steering_angle, throttle
 
     @property
     def transform(self):
