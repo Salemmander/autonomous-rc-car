@@ -54,47 +54,79 @@ class Trainer:
         metrics_path = os.path.join(output, self.metrics_name)
         csv_file = open(metrics_path, "w", newline="")
         writer = csv.writer(csv_file)
-        writer.writerow(["epoch", "train_loss", "val_loss", "train_mae", "val_mae"])
+        writer.writerow(
+            [
+                "epoch",
+                "train_loss",
+                "val_loss",
+                "train_steering_mae",
+                "val_steering_mae",
+                "train_throttle_mae",
+                "val_throttle_mae",
+            ]
+        )
 
         while epoch < self.max_epochs and epochs_without_improvement < self.patience:
             self.model.train()
             train_loss = 0.0
-            train_mae = 0.0
+            steering_mae = 0.0
+            throttle_mae = 0.0
             pbar = tqdm(self.train_loader, desc=f"Epoch {epoch + 1} [train]")
-            for batch_idx, (images, steering) in enumerate(pbar, 1):
+            for batch_idx, (images, steering, throttle) in enumerate(pbar, 1):
                 images = images.to(self.device)
-                steering = steering.to(self.device, dtype=torch.float32).unsqueeze(1)
+                steering = steering.to(self.device, dtype=torch.float32)
+                throttle = throttle.to(self.device, dtype=torch.float32)
+
                 self.optimizer.zero_grad()
-                pred = self.model(images)
-                loss = self.criterion(pred, steering)
+                steering_pred, throttle_pred = self.model(images)
+                loss = self.criterion(steering_pred, steering) + self.criterion(throttle_pred, throttle)  # fmt:skip
                 loss.backward()
                 self.optimizer.step()
+
                 train_loss += loss.item()
-                train_mae += self.mae(pred, steering).item()
-                pbar.set_postfix(loss=train_loss / batch_idx, mae=train_mae / batch_idx)
+                steering_mae += self.mae(steering_pred, steering).item()
+                throttle_mae += self.mae(throttle_pred, throttle).item()
+                pbar.set_postfix(
+                    loss=train_loss / batch_idx,
+                    steering_mae=steering_mae / batch_idx,
+                    throttle_mae=throttle_mae / batch_idx,
+                )
 
             avg_train_loss = train_loss / len(self.train_loader)
-            avg_train_mae = train_mae / len(self.train_loader)
+            avg_steering_mae = steering_mae / len(self.train_loader)
+            avg_throttle_mae = throttle_mae / len(self.train_loader)
 
             self.model.eval()
             val_loss = 0.0
-            val_mae = 0.0
+            val_steering_mae = 0.0
+            val_throttle_mae = 0.0
             pbar = tqdm(self.val_loader, desc=f"Epoch {epoch + 1} [val]")
             with torch.no_grad():
-                for batch_idx, (images, steering) in enumerate(pbar, 1):
+                for batch_idx, (images, steering, throttle) in enumerate(pbar, 1):
                     images = images.to(self.device)
-                    steering = steering.to(self.device, dtype=torch.float32).unsqueeze(1)  # fmt:skip
-                    pred = self.model(images)
-                    loss = self.criterion(pred, steering)
+                    steering = steering.to(self.device, dtype=torch.float32)
+                    throttle = throttle.to(self.device, dtype=torch.float32)
+
+                    steering_pred, throttle_pred = self.model(images)
+                    loss = self.criterion(steering_pred, steering) + self.criterion(throttle_pred, throttle)  # fmt:skip
+
                     val_loss += loss.item()
-                    val_mae += self.mae(pred, steering).item()
-                    pbar.set_postfix(loss=val_loss / batch_idx, mae=val_mae / batch_idx)
+                    val_steering_mae += self.mae(steering_pred, steering).item()
+                    val_throttle_mae += self.mae(throttle_pred, throttle).item()
+                    pbar.set_postfix(
+                        loss=val_loss / batch_idx,
+                        steering_mae=val_steering_mae / batch_idx,
+                        throttle_mae=val_throttle_mae / batch_idx,
+                    )
 
             avg_val_loss = val_loss / len(self.val_loader)
-            avg_val_mae = val_mae / len(self.val_loader)
+            avg_val_steering_mae = val_steering_mae / len(self.val_loader)
+            avg_val_throttle_mae = val_throttle_mae / len(self.val_loader)
 
             print(
-                f"Epoch {epoch + 1} - train_loss: {avg_train_loss:.4f}, val_loss: {avg_val_loss:.4f}, train_mae: {avg_train_mae:.4f}, val_mae: {avg_val_mae:.4f}"
+                f"Epoch {epoch + 1} - train_loss: {avg_train_loss:.4f}, val_loss: {avg_val_loss:.4f}, "
+                f"train_s_mae: {avg_steering_mae:.4f}, val_s_mae: {avg_val_steering_mae:.4f}, "
+                f"train_t_mae: {avg_throttle_mae:.4f}, val_t_mae: {avg_val_throttle_mae:.4f}"
             )
 
             writer.writerow(
@@ -102,8 +134,10 @@ class Trainer:
                     epoch + 1,
                     f"{avg_train_loss:.4f}",
                     f"{avg_val_loss:.4f}",
-                    f"{avg_train_mae:.4f}",
-                    f"{avg_val_mae:.4f}",
+                    f"{avg_steering_mae:.4f}",
+                    f"{avg_val_steering_mae:.4f}",
+                    f"{avg_throttle_mae:.4f}",
+                    f"{avg_val_throttle_mae:.4f}",
                 ]
             )
             csv_file.flush()

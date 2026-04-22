@@ -81,14 +81,12 @@ def drive():
 def run_pilotnet(record=False):
     print("Initializing Vehicle with PilotNet")
 
-    FIXED_THROTTLE = 0.2
-
     vehicle = Vehicle()
 
     print("Loading PilotNet")
     model = PilotNet(input_height=84, input_width=160)
     transform = model.transform
-    model_path = "models/pilotnet_2026-03-15_19-58-13.pth"
+    model_path = "models/pilotnet_2026-04-22_16-39-13.pth"
     model.load_state_dict(torch.load(model_path, map_location="cpu"))
     model.eval()
 
@@ -116,10 +114,12 @@ def run_pilotnet(record=False):
 
                 img = transform(Image.fromarray(frame)).unsqueeze(0)
 
-                steering = model(img).item()
+                steering, throttle = model(img)
+                steering = steering.item()
+                throttle = throttle.item()
                 if writer:
                     writer.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-                vehicle.drive(steering, FIXED_THROTTLE)
+                vehicle.drive(steering, throttle)
 
     except KeyboardInterrupt:
         print("\n\nShutting Down..")
