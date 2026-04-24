@@ -17,6 +17,7 @@ import torch
 from PIL import Image
 from src.car import config as cfg
 from src.car.datastore import DataStore
+from src.car.filters import ScalarKalmanFilter1D
 from src.car.vehicle import Vehicle
 from src.car.controller import Controller
 from src.training.pilotnet import PilotNet
@@ -78,35 +79,48 @@ def drive():
         vehicle.shutdown()
 
 
-def draw_telemetry_overlay(frame, steering, throttle):
-    """Draw PilotNet prediction readouts onto a BGR frame in place."""
+def draw_telemetry_overlay(frame, steer_raw, steer_filtered, throttle):
+    """Draw PilotNet prediction readouts onto a BGR frame in place.
+
+    Shows both raw PilotNet steering and Kalman-filtered steering so the
+    filter effect is visible in the recorded video.
+    """
     h, w = frame.shape[:2]
 
-    cv2.rectangle(frame, (10, 10), (340, 120), (0, 0, 0), -1)
+    cv2.rectangle(frame, (10, 10), (380, 155), (0, 0, 0), -1)
     cv2.putText(
         frame,
-        "PilotNet",
+        "PilotNet + Kalman",
         (20, 42),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.9,
+        0.8,
         (0, 255, 0),
         2,
     )
     cv2.putText(
         frame,
-        f"STEER: {steering:+.2f}",
+        f"STEER raw : {steer_raw:+.2f}",
         (20, 75),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.7,
-        (255, 255, 255),
+        0.65,
+        (80, 80, 255),
         2,
     )
     cv2.putText(
         frame,
-        f"THROT: {throttle:+.2f}",
+        f"STEER kf  : {steer_filtered:+.2f}",
         (20, 108),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.7,
+        0.65,
+        (0, 255, 0),
+        2,
+    )
+    cv2.putText(
+        frame,
+        f"THROT     : {throttle:+.2f}",
+        (20, 141),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.65,
         (255, 255, 255),
         2,
     )
@@ -118,13 +132,17 @@ def draw_telemetry_overlay(frame, steering, throttle):
     cv2.line(
         frame, (bar_center, bar_y - 20), (bar_center, bar_y + 20), (200, 200, 200), 1
     )
-    marker_x = int(bar_center + max(-1.0, min(1.0, steering)) * (bar_x1 - bar_center))
+    raw_x = int(bar_center + max(-1.0, min(1.0, steer_raw)) * (bar_x1 - bar_center))
+    cv2.line(frame, (raw_x, bar_y - 18), (raw_x, bar_y + 18), (80, 80, 255), 2)
+    filt_x = int(
+        bar_center + max(-1.0, min(1.0, steer_filtered)) * (bar_x1 - bar_center)
+    )
     cv2.rectangle(
-        frame, (marker_x - 6, bar_y - 18), (marker_x + 6, bar_y + 18), (0, 255, 0), -1
+        frame, (filt_x - 6, bar_y - 18), (filt_x + 6, bar_y + 18), (0, 255, 0), -1
     )
     cv2.putText(
         frame,
-        "STEER -1 .. +1",
+        "STEER  raw (red)  |  kalman (green)",
         (bar_x0, bar_y - 26),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.5,
@@ -172,6 +190,8 @@ def run_pilotnet(record=False):
     model.load_state_dict(torch.load(model_path, map_location="cpu"))
     model.eval()
 
+    steer_filter = ScalarKalmanFilter1D(x0=0.0, P0=1.0, Q=0.02, R=0.05)
+
     writer = None
     if record:
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -197,13 +217,18 @@ def run_pilotnet(record=False):
                 img = transform(Image.fromarray(frame)).unsqueeze(0)
 
                 steering, throttle = model(img)
-                steering = steering.item()
+                steering_raw = steering.item()
                 throttle = throttle.item()
+
+                steering_filtered = steer_filter.step(steering_raw)
+
                 if writer:
                     overlay = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                    draw_telemetry_overlay(overlay, steering, throttle)
+                    draw_telemetry_overlay(
+                        overlay, steering_raw, steering_filtered, throttle
+                    )
                     writer.write(overlay)
-                vehicle.drive(steering, throttle)
+                vehicle.drive(steering_filtered, throttle)
 
     except KeyboardInterrupt:
         print("\n\nShutting Down..")
