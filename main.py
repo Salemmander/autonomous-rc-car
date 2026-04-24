@@ -78,6 +78,88 @@ def drive():
         vehicle.shutdown()
 
 
+def draw_telemetry_overlay(frame, steering, throttle):
+    """Draw PilotNet prediction readouts onto a BGR frame in place."""
+    h, w = frame.shape[:2]
+
+    cv2.rectangle(frame, (10, 10), (340, 120), (0, 0, 0), -1)
+    cv2.putText(
+        frame,
+        "PilotNet",
+        (20, 42),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.9,
+        (0, 255, 0),
+        2,
+    )
+    cv2.putText(
+        frame,
+        f"STEER: {steering:+.2f}",
+        (20, 75),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (255, 255, 255),
+        2,
+    )
+    cv2.putText(
+        frame,
+        f"THROT: {throttle:+.2f}",
+        (20, 108),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (255, 255, 255),
+        2,
+    )
+
+    bar_y = h - 40
+    bar_x0, bar_x1 = 60, w - 100
+    bar_center = (bar_x0 + bar_x1) // 2
+    cv2.rectangle(frame, (bar_x0, bar_y - 14), (bar_x1, bar_y + 14), (40, 40, 40), -1)
+    cv2.line(
+        frame, (bar_center, bar_y - 20), (bar_center, bar_y + 20), (200, 200, 200), 1
+    )
+    marker_x = int(bar_center + max(-1.0, min(1.0, steering)) * (bar_x1 - bar_center))
+    cv2.rectangle(
+        frame, (marker_x - 6, bar_y - 18), (marker_x + 6, bar_y + 18), (0, 255, 0), -1
+    )
+    cv2.putText(
+        frame,
+        "STEER -1 .. +1",
+        (bar_x0, bar_y - 26),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (200, 200, 200),
+        1,
+    )
+
+    tbar_x = w - 60
+    tbar_y0, tbar_y1 = 150, h - 80
+    tbar_mid = (tbar_y0 + tbar_y1) // 2
+    cv2.rectangle(
+        frame, (tbar_x - 14, tbar_y0), (tbar_x + 14, tbar_y1), (40, 40, 40), -1
+    )
+    cv2.line(
+        frame, (tbar_x - 20, tbar_mid), (tbar_x + 20, tbar_mid), (200, 200, 200), 1
+    )
+    marker_y = int(tbar_mid - max(-1.0, min(1.0, throttle)) * (tbar_mid - tbar_y0))
+    cv2.rectangle(
+        frame,
+        (tbar_x - 18, marker_y - 6),
+        (tbar_x + 18, marker_y + 6),
+        (0, 200, 255),
+        -1,
+    )
+    cv2.putText(
+        frame,
+        "THROT",
+        (tbar_x - 34, tbar_y0 - 12),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (200, 200, 200),
+        1,
+    )
+
+
 def run_pilotnet(record=False):
     print("Initializing Vehicle with PilotNet")
 
@@ -118,7 +200,9 @@ def run_pilotnet(record=False):
                 steering = steering.item()
                 throttle = throttle.item()
                 if writer:
-                    writer.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+                    overlay = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                    draw_telemetry_overlay(overlay, steering, throttle)
+                    writer.write(overlay)
                 vehicle.drive(steering, throttle)
 
     except KeyboardInterrupt:
