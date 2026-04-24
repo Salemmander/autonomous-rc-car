@@ -107,7 +107,10 @@ def run_pilotnet(record=False):
 
     try:
         with torch.no_grad():
+            loop_times = []
+            last_print = time.time()
             while True:
+                t0 = time.perf_counter()
                 frame = vehicle.get_frame()
                 if frame is None:
                     continue
@@ -120,6 +123,12 @@ def run_pilotnet(record=False):
                 if writer:
                     writer.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
                 vehicle.drive(steering, throttle)
+                loop_times.append(time.perf_counter() - t0)
+                if time.time() - last_print >= 5.0:
+                    hz = 1.0 / (sum(loop_times) / len(loop_times))
+                    print(f"Inference loop: {hz:.1f} Hz (n={len(loop_times)})")
+                    loop_times.clear()
+                    last_print = time.time()
 
     except KeyboardInterrupt:
         print("\n\nShutting Down..")
