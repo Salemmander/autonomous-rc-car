@@ -48,7 +48,6 @@ public:
         if (fd < 0) {
             return;
         }
-        // Clamp angle to real range
         angle = std::clamp(angle, -1.0f, 1.0f);
 
         uint8_t pulse =
