@@ -67,12 +67,14 @@ public:
         fd = open(bus_path, O_RDONLY);
         if (fd < 0) {
             perror("open /dev/gpiochip0");
+            lines.fd = -1;
             return;
         }
         if (ioctl(fd, GPIO_V2_GET_LINE_IOCTL, &lines) < 0) {
             perror("init: ioctl GPIO_V2_GET_LINE_IOCTL");
             close(fd);
             fd = -1;
+            lines.fd = -1;
             return;
         }
         close(fd);
