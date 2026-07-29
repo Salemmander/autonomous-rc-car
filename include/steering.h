@@ -44,7 +44,7 @@ public:
         return fd >= 0;
     }
 
-    void steer(float angle) {
+    void setSteeringAngle(float angle) {
         if (fd < 0) {
             return;
         }
