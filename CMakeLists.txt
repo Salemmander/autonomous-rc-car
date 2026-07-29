@@ -17,3 +17,8 @@ add_executable(throttle_test tests/throttle_test.cpp)
 target_include_directories(throttle_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_compile_options(throttle_test PRIVATE -Wall -Wextra)
 target_link_libraries(throttle_test PRIVATE Threads::Threads)
+
+add_executable(vehicle_test tests/vehicle_test.cpp)
+target_include_directories(vehicle_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_compile_options(vehicle_test PRIVATE -Wall -Wextra)
+target_link_libraries(vehicle_test PRIVATE Threads::Threads)
