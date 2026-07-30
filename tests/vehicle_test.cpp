@@ -6,7 +6,7 @@
 
 int main() {
     // Wheels off the ground before running.
-    Vehicle vehicle;
+    Vehicle vehicle{1280, 720};
 
     if (!vehicle.ok()) {
         std::cerr << "Failed to open vehicle (steering and/or throttle)\n";

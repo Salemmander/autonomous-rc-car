@@ -20,3 +20,5 @@ target_link_libraries(camera_test PRIVATE camera)
 # camera_test.cpp still uses OpenCV to write a PNG preview.
 target_include_directories(camera_test PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(camera_test PRIVATE ${OpenCV_LIBS})
+
+target_link_libraries(vehicle_test PRIVATE camera)
