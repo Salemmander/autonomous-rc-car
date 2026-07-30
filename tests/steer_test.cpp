@@ -13,19 +13,19 @@ int main() {
     }
 
     std::cout << "center\n";
-    steering.steer(0);
+    steering.setSteeringAngle(0);
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
     std::cout << "right\n";
-    steering.steer(1.0);
+    steering.setSteeringAngle(1.0);
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
     std::cout << "left\n";
-    steering.steer(-1.0);
+    steering.setSteeringAngle(-1.0);
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
     std::cout << "center\n";
-    steering.steer(0);
+    steering.setSteeringAngle(0);
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
     return 0;
