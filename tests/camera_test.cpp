@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 
 int main() {
     CameraController camera(1280, 720);

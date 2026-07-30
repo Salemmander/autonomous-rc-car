@@ -15,6 +15,8 @@ add_car_test(throttle_test)
 add_car_test(vehicle_test)
 add_car_test(camera_test)
 
-# camera.h decodes MJPEG with OpenCV
+# Implementation + OpenCV live in the camera library (not the header).
+target_link_libraries(camera_test PRIVATE camera)
+# camera_test.cpp still uses OpenCV to write a PNG preview.
 target_include_directories(camera_test PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(camera_test PRIVATE ${OpenCV_LIBS})

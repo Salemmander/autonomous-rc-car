@@ -11,4 +11,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # For clangd / nvim: generate build/compile_commands.json
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+add_library(camera STATIC src/camera.cpp)
+target_include_directories(camera PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(camera PUBLIC ${OpenCV_LIBS} Threads::Threads)
+target_compile_options(camera PRIVATE -Wall -Wextra)
+
 add_subdirectory(tests)
