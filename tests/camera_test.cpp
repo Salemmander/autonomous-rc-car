@@ -11,7 +11,8 @@ int main() {
         return 1;
     }
 
-    std::cout << "camera ok: " << camera.getWidth() << "x" << camera.getHeight() << "\n";
+    std::cout << "camera ok: " << camera.getWidth() << "x" << camera.getHeight()
+              << " (MJPEG)\n";
 
     // Grab a few frames so the stream settles.
     for (int i = 0; i < 5; ++i) {
@@ -24,23 +25,19 @@ int main() {
     }
 
     auto frame = camera.getFrame();
-    std::cout << "frame bytes: " << frame.size() << "\n";
+    std::cout << "frame bytes: " << frame.size() << " (compressed JPEG)\n";
 
-    const std::size_t expected_yuyv =
-        static_cast<std::size_t>(camera.getWidth()) * camera.getHeight() * 2;
-    if (frame.size() != expected_yuyv && frame.size() == 0) {
+    if (frame.empty()) {
         std::cerr << "Unexpected empty frame\n";
         return 1;
     }
-    std::cout << "expected ~" << expected_yuyv << " bytes for YUYV "
-              << camera.getWidth() << "x" << camera.getHeight() << "\n";
 
-    // Optional: dump raw YUYV for inspection (e.g. convert with ffmpeg later).
-    std::ofstream out("camera_test_frame.yuyv", std::ios::binary);
+    // MJPEG buffers are valid JPEG files as-is.
+    std::ofstream out("camera_test_frame.jpg", std::ios::binary);
     if (out) {
         out.write(reinterpret_cast<const char*>(frame.data()),
                   static_cast<std::streamsize>(frame.size()));
-        std::cout << "wrote camera_test_frame.yuyv\n";
+        std::cout << "wrote camera_test_frame.jpg\n";
     }
 
     std::cout << "camera_test ok\n";

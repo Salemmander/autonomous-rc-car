@@ -26,7 +26,7 @@ private:
     };
     std::vector<CamBuffer> buffers;
 
-    // Latest YUYV frame copy (safe to read after capture returns).
+    // Latest MJPEG frame copy (JPEG bytes; decode to RGB later).
     std::vector<std::uint8_t> latest_frame_;
     bool has_frame_{false};
     mutable std::mutex frame_mutex_;
@@ -65,7 +65,7 @@ public:
         fmt.fmt.pix.width = width;
         fmt.fmt.pix.height = height;
         fmt.fmt.pix.field = V4L2_FIELD_NONE;
-        fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
+        fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG;
 
         if (ioctl(fd, VIDIOC_S_FMT, &fmt) < 0) {
             perror("ioctl VIDIOC_S_FMT");
@@ -154,7 +154,7 @@ public:
         return has_frame_;
     }
 
-    // Returns a copy of the latest YUYV frame, or empty if none yet.
+    // Returns a copy of the latest MJPEG frame (JPEG bytes), or empty if none yet.
     std::vector<std::uint8_t> getFrame() const {
         std::lock_guard<std::mutex> lock(frame_mutex_);
         return latest_frame_;
