@@ -1,7 +1,7 @@
 #include "camera.h"
 
-#include <fstream>
 #include <iostream>
+#include <opencv2/imgcodecs.hpp>
 
 int main() {
     CameraController camera(1280, 720);
@@ -11,10 +11,8 @@ int main() {
         return 1;
     }
 
-    std::cout << "camera ok: " << camera.getWidth() << "x" << camera.getHeight()
-              << " (MJPEG)\n";
+    std::cout << "camera ok: " << camera.getWidth() << "x" << camera.getHeight() << "\n";
 
-    // Grab a few frames so the stream settles.
     for (int i = 0; i < 5; ++i) {
         camera.capture();
     }
@@ -25,21 +23,24 @@ int main() {
     }
 
     auto frame = camera.getFrame();
-    std::cout << "frame bytes: " << frame.size() << " (compressed JPEG)\n";
+    const std::size_t expected =
+        static_cast<std::size_t>(camera.getWidth()) * camera.getHeight() * 3;
+    std::cout << "frame bytes: " << frame.size() << " (expected RGB " << expected << ")\n";
 
-    if (frame.empty()) {
-        std::cerr << "Unexpected empty frame\n";
+    if (frame.size() != expected) {
+        std::cerr << "Unexpected RGB frame size\n";
         return 1;
     }
 
-    // MJPEG buffers are valid JPEG files as-is.
-    std::ofstream out("camera_test_frame.jpg", std::ios::binary);
-    if (out) {
-        out.write(reinterpret_cast<const char*>(frame.data()),
-                  static_cast<std::streamsize>(frame.size()));
-        std::cout << "wrote camera_test_frame.jpg\n";
+    // OpenCV expects BGR for imwrite color images.
+    cv::Mat rgb(camera.getHeight(), camera.getWidth(), CV_8UC3, frame.data());
+    cv::Mat bgr;
+    cv::cvtColor(rgb, bgr, cv::COLOR_RGB2BGR);
+    if (!cv::imwrite("camera_test_frame.png", bgr)) {
+        std::cerr << "Failed to write camera_test_frame.png\n";
+        return 1;
     }
-
+    std::cout << "wrote camera_test_frame.png\n";
     std::cout << "camera_test ok\n";
     return 0;
 }

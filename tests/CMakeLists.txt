@@ -14,3 +14,7 @@ add_car_test(steer_test)
 add_car_test(throttle_test)
 add_car_test(vehicle_test)
 add_car_test(camera_test)
+
+# camera.h decodes MJPEG with OpenCV
+target_include_directories(camera_test PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(camera_test PRIVATE ${OpenCV_LIBS})
