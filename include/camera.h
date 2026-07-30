@@ -18,9 +18,11 @@ public:
     int getHeight() const;
     bool hasFrame() const;
 
-    // Latest RGB888 frame (H*W*3), or empty if none yet.
+    // Last successfully captured RGB888 frame (H*W*3), or empty if none yet.
+    // Failed/corrupt reads do not clear this — callers keep the last good image.
     std::vector<std::uint8_t> getFrame() const;
 
+    // Try to grab a frame; only replaces last good on success.
     void capture();
 
 private:
