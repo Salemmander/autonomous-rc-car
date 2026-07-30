@@ -83,14 +83,7 @@ void CameraController::capture() {
     cv::cvtColor(bgr, rgb, cv::COLOR_BGR2RGB);
 
     std::lock_guard<std::mutex> lock(impl_->frame_mutex);
-    if (rgb.isContinuous()) {
-        impl_->latest_frame.assign(rgb.data, rgb.data + rgb.total() * rgb.channels());
-    } else {
-        cv::Mat contiguous;
-        rgb.copyTo(contiguous);
-        impl_->latest_frame.assign(contiguous.data,
-                                   contiguous.data + contiguous.total() * contiguous.channels());
-    }
+    impl_->latest_frame.assign(rgb.data, rgb.data + rgb.total() * rgb.channels());
     impl_->width = rgb.cols;
     impl_->height = rgb.rows;
     impl_->has_frame = true;

@@ -4,6 +4,7 @@
 #include "steering.h"
 #include "throttle.h"
 #include <atomic>
+#include <chrono>
 #include <thread>
 #include <vector>
 
@@ -51,6 +52,7 @@ public:
         cam_thread = std::thread([this] {
             while (running) {
                 cameractl.capture();
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
         });
     }

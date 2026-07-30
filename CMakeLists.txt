@@ -16,4 +16,8 @@ target_include_directories(camera PUBLIC ${CMAKE_SOURCE_DIR}/include)
 target_link_libraries(camera PUBLIC ${OpenCV_LIBS} Threads::Threads)
 target_compile_options(camera PRIVATE -Wall -Wextra)
 
+add_executable(drive src/main.cpp)
+target_link_libraries(drive PRIVATE camera Threads::Threads)
+target_compile_options(drive PRIVATE -Wall -Wextra)
+
 add_subdirectory(tests)
