@@ -54,11 +54,9 @@ public:
             static_cast<uint8_t>(left_pulse + (angle + 1.0f) / 2.0f * (right_pulse - left_pulse));
 
         uint8_t buf[3] = {command, channel, pulse};
-        for (int i = 0; i < 3; ++i) {
-            ssize_t n = write(fd, buf, 3);
-            if (n != 3) {
-                perror("write");
-            }
+        ssize_t n = write(fd, buf, 3);
+        if (n != 3) {
+            perror("write");
         }
     }
 };
