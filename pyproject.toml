@@ -10,6 +10,7 @@ dependencies = [
   "evdev>=1.9.3",
   "matplotlib>=3.10.8",
   "numpy>=2.0.0",
+  "onnx>=1.22.0",
   "opencv-python>=4.13.0.92",
   "pillow>=12.1.0",
   "smbus2>=0.5.0",
