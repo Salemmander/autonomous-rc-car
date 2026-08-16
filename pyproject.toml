@@ -23,9 +23,6 @@ dependencies = [
 torch = [{ index = "pytorch-cu130" }]
 torchvision = [{ index = "pytorch-cu130" }]
 
-[project.scripts]
-drive = "main:main"
-
 [[tool.uv.index]]
 name = "pytorch-cu130"
 url = "https://download.pytorch.org/whl/cu130"
