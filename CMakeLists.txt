@@ -10,16 +10,22 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+set(ONNXRUNTIME_ROOT $ENV{HOME}/onnxruntime)
+
 add_library(camera STATIC src/camera.cpp)
 target_include_directories(camera PUBLIC ${CMAKE_SOURCE_DIR}/include)
 target_link_libraries(camera PUBLIC ${OpenCV_LIBS} Threads::Threads)
 target_compile_options(camera PRIVATE -Wall -Wextra)
 
+add_library(pilotnet_onnx STATIC src/pilotnet_onnx.cpp)
+target_include_directories(pilotnet_onnx PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(pilotnet_onnx PRIVATE ${ONNXRUNTIME_ROOT}/include)
+target_link_libraries(pilotnet_onnx
+                      PUBLIC ${ONNXRUNTIME_ROOT}/lib/libonnxruntime.so)
+target_compile_options(pilotnet_onnx PRIVATE -Wall -Wextra)
+
 add_executable(drive src/main.cpp)
-set(ONNXRUNTIME_ROOT $ENV{HOME}/onnxruntime)
-target_link_libraries(drive PRIVATE camera Threads::Threads
-                                    ${ONNXRUNTIME_ROOT}/lib/libonnxruntime.so)
+target_link_libraries(drive PRIVATE camera pilotnet_onnx Threads::Threads)
 target_compile_options(drive PRIVATE -Wall -Wextra)
-target_include_directories(drive PRIVATE ${ONNXRUNTIME_ROOT}/include)
 
 add_subdirectory(tests)
