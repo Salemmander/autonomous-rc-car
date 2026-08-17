@@ -1,10 +1,14 @@
+#include "controller.h"
 #include "pilotnet_onnx.h"
 #include "vehicle.h"
 
 #include <atomic>
 #include <chrono>
 #include <csignal>
+#include <cstdio>
+#include <cstring>
 #include <iostream>
+#include <memory>
 #include <thread>
 
 namespace {
@@ -21,7 +25,27 @@ namespace {
 
 } // namespace
 
-int main() {
+enum class Mode {
+    Manual,
+    Auto
+};
+
+int main(int argc, char** argv) {
+    Mode mode;
+    if (argc >= 2) {
+        if (strcmp(argv[1], "--manual") == 0) {
+            mode = Mode::Manual;
+        } else if (strcmp(argv[1], "--auto") == 0) {
+            mode = Mode::Auto;
+        } else {
+            std::cerr << "Only valid args are --manual and --auto\n";
+            return 1;
+        }
+    } else {
+        std::cerr << "Must use either --manual or --auto\n";
+        return 1;
+    }
+
     std::signal(SIGINT, on_sigint);
 
     Vehicle car{WIDTH, HEIGHT};
@@ -29,8 +53,15 @@ int main() {
         std::cerr << "Failed to open vehicle\n";
         return 1;
     }
+    std::unique_ptr<XboxController> pad;
+    std::unique_ptr<PilotNetOnnx> net;
 
-    PilotNetOnnx net{MODEL_PATH, HEIGHT, WIDTH};
+    if (mode == Mode::Manual) {
+        pad = std::make_unique<XboxController>();
+        pad->start();
+    } else if (mode == Mode::Auto) {
+        net = std::make_unique<PilotNetOnnx>(MODEL_PATH, HEIGHT, WIDTH);
+    }
     car.start();
 
     float steering = 0.0f;
@@ -39,9 +70,13 @@ int main() {
     while (g_running) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-        const auto frame = car.getFrame();
-        if (!net.infer(frame, steering, throttle)) {
-            continue;
+        if (mode == Mode::Manual) {
+            pad->get_input(steering, throttle);
+        } else if (mode == Mode::Auto) {
+            const auto frame = car.getFrame();
+            if (!net->infer(frame, steering, throttle)) {
+                continue;
+            }
         }
         car.drive(steering, throttle);
     }
