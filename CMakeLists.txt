@@ -24,8 +24,13 @@ target_link_libraries(pilotnet_onnx
                       PUBLIC ${ONNXRUNTIME_ROOT}/lib/libonnxruntime.so)
 target_compile_options(pilotnet_onnx PRIVATE -Wall -Wextra)
 
+add_library(stream STATIC src/stream.cpp)
+target_include_directories(stream PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_compile_options(stream PRIVATE -Wall -Wextra)
+target_link_libraries(stream PUBLIC Threads::Threads ${OpenCV_LIBS})
+
 add_executable(drive src/main.cpp)
-target_link_libraries(drive PRIVATE camera pilotnet_onnx Threads::Threads)
+target_link_libraries(drive PRIVATE camera pilotnet_onnx stream Threads::Threads)
 target_compile_options(drive PRIVATE -Wall -Wextra)
 
 add_subdirectory(tests)

@@ -44,6 +44,14 @@ public:
         return cameractl.getFrame();
     }
 
+    int getWidth() const {
+        return cameractl.getWidth();
+    }
+
+    int getHeight() const {
+        return cameractl.getHeight();
+    }
+
     void start() {
         if (running || cam_thread.joinable())
             return;

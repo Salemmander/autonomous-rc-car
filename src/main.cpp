@@ -1,5 +1,6 @@
 #include "controller.h"
 #include "pilotnet_onnx.h"
+#include "stream.h"
 #include "vehicle.h"
 
 #include <atomic>
@@ -48,6 +49,8 @@ int main(int argc, char** argv) {
 
     std::signal(SIGINT, on_sigint);
 
+    MjpegStream stream{};
+
     Vehicle car{WIDTH, HEIGHT};
     if (!car.ok()) {
         std::cerr << "Failed to open vehicle\n";
@@ -63,6 +66,7 @@ int main(int argc, char** argv) {
         net = std::make_unique<PilotNetOnnx>(MODEL_PATH, HEIGHT, WIDTH);
     }
     car.start();
+    stream.start();
 
     float steering = 0.0f;
     float throttle = 0.0f;
@@ -70,10 +74,12 @@ int main(int argc, char** argv) {
     while (g_running) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
+        const auto frame = car.getFrame();
+        stream.send(frame, WIDTH, HEIGHT);
+
         if (mode == Mode::Manual) {
             pad->get_input(steering, throttle);
         } else if (mode == Mode::Auto) {
-            const auto frame = car.getFrame();
             if (!net->infer(frame, steering, throttle)) {
                 continue;
             }
