@@ -44,6 +44,11 @@ public:
         return cameractl.getFrame();
     }
 
+    bool waitForFrame(std::uint64_t& seq, std::vector<std::uint8_t>& out,
+                      std::chrono::milliseconds timeout) const {
+        return cameractl.waitForFrame(seq, out, timeout);
+    }
+
     int getWidth() const {
         return cameractl.getWidth();
     }
@@ -59,8 +64,8 @@ public:
         running = true;
         cam_thread = std::thread([this] {
             while (running) {
+                // cap.read() blocks until the camera delivers a frame, so no sleep is needed.
                 cameractl.capture();
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
         });
     }

@@ -11,11 +11,12 @@
 #include <iostream>
 #include <memory>
 #include <thread>
+#include <vector>
 
 namespace {
 
-    constexpr int WIDTH = 1280;
-    constexpr int HEIGHT = 720;
+    constexpr int WIDTH = 160;  // Matches the training data, so no per-frame resize.
+    constexpr int HEIGHT = 120;
     constexpr auto MODEL_PATH = "models/pilotnet.onnx";
 
     std::atomic<bool> g_running{true};
@@ -71,10 +72,15 @@ int main(int argc, char** argv) {
     float steering = 0.0f;
     float throttle = 0.0f;
 
-    while (g_running) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    std::uint64_t frame_seq = 0;
+    std::vector<std::uint8_t> frame;
 
-        const auto frame = car.getFrame();
+    while (g_running) {
+        // Wait for a new camera frame instead of re-processing a stale one.
+        // The timeout lets Ctrl+C exit even if the camera stalls.
+        if (!car.waitForFrame(frame_seq, frame, std::chrono::milliseconds(200))) {
+            continue;
+        }
         stream.send(frame, WIDTH, HEIGHT);
 
         if (mode == Mode::Manual) {

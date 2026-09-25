@@ -1,10 +1,13 @@
 """Export PilotNet + preprocess to ONNX for C++ inference.
 
-Input:  NCHW RGB float in [0, 255] (camera frame, e.g. 1x3x720x1280)
+Input:  NCHW RGB float in [0, 255] (camera frame, 1x3x120x160)
 Output: (N, 2) = [steering, throttle]
 
 Preprocess (torch approx of PilotNet.transform):
-  resize 120x160 -> crop top 30% -> RGB->YCbCr -> /255
+  resize to 120x160 (skipped when the camera already captures 120x160)
+  -> crop top 30% -> RGB->YCbCr -> /255
+
+Capture at 160x120 so frames match the training data and no resize runs per frame.
 """
 
 from __future__ import annotations
@@ -20,8 +23,8 @@ ONNX_PATH = "models/pilotnet.onnx"
 
 NET_HEIGHT = 84
 NET_WIDTH = 160
-CAM_HEIGHT = 720
-CAM_WIDTH = 1280
+CAM_HEIGHT = 120
+CAM_WIDTH = 160
 
 
 def rgb_to_ycbcr_255(x: torch.Tensor) -> torch.Tensor:
@@ -35,13 +38,15 @@ def rgb_to_ycbcr_255(x: torch.Tensor) -> torch.Tensor:
 
 class PilotNetPreprocess(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.interpolate(
-            x,
-            size=INPUT_SIZE,
-            mode="bilinear",
-            align_corners=False,
-            antialias=False,
-        )
+        # Shapes are static at export time, so this check is resolved during tracing.
+        if tuple(x.shape[2:]) != INPUT_SIZE:
+            x = F.interpolate(
+                x,
+                size=INPUT_SIZE,
+                mode="bilinear",
+                align_corners=False,
+                antialias=False,
+            )
         top = int(INPUT_SIZE[0] * 0.3)
         x = x[:, :, top:, :]
         return rgb_to_ycbcr_255(x)
