@@ -1,5 +1,6 @@
 #include "camera.h"
 
+#include <condition_variable>
 #include <cstdio>
 #include <fcntl.h>
 #include <iostream>
@@ -52,7 +53,9 @@ struct CameraController::Impl {
     int height{0};
     std::vector<std::uint8_t> latest_frame;
     bool has_frame{false};
+    std::uint64_t frame_seq{0};
     mutable std::mutex frame_mutex;
+    mutable std::condition_variable frame_cv;
 };
 
 CameraController::CameraController(int width, int height) : impl_(std::make_unique<Impl>()) {
@@ -111,6 +114,20 @@ std::vector<std::uint8_t> CameraController::getFrame() const {
     return impl_->latest_frame;
 }
 
+bool CameraController::waitForFrame(std::uint64_t& seq, std::vector<std::uint8_t>& out,
+                                    std::chrono::milliseconds timeout) const {
+    if (!impl_) {
+        return false;
+    }
+    std::unique_lock<std::mutex> lock(impl_->frame_mutex);
+    if (!impl_->frame_cv.wait_for(lock, timeout, [&] { return impl_->frame_seq != seq; })) {
+        return false;
+    }
+    out = impl_->latest_frame;
+    seq = impl_->frame_seq;
+    return true;
+}
+
 void CameraController::capture() {
     if (!ok()) {
         return;
@@ -135,9 +152,13 @@ void CameraController::capture() {
         return;
     }
 
-    std::lock_guard<std::mutex> lock(impl_->frame_mutex);
-    impl_->latest_frame.assign(rgb.data, rgb.data + rgb.total() * rgb.channels());
-    impl_->width = rgb.cols;
-    impl_->height = rgb.rows;
-    impl_->has_frame = true;
+    {
+        std::lock_guard<std::mutex> lock(impl_->frame_mutex);
+        impl_->latest_frame.assign(rgb.data, rgb.data + rgb.total() * rgb.channels());
+        impl_->width = rgb.cols;
+        impl_->height = rgb.rows;
+        impl_->has_frame = true;
+        ++impl_->frame_seq;
+    }
+    impl_->frame_cv.notify_all();
 }
