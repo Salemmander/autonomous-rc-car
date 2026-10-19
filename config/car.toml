@@ -2,7 +2,7 @@
 width = 160
 height = 120
 fov_y_deg = 60.0
-pos = [0.10, 0.0, 0.12]
+pos = [0.17, 0.0, 0.12]
 pitch_deg = -20.0
 
 [steering]

@@ -38,7 +38,14 @@ def build_scene(spec: mujoco.MjSpec) -> None:
     floor_mat.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = "grid"
 
     world = spec.worldbody
-    world.add_light(pos=[0, 0, 3], dir=[0, 0, -1])
+    world.add_light(
+        type=mujoco.mjtLightType.mjLIGHT_DIRECTIONAL,
+        pos=[0, 0, 3],
+        dir=[0.3, 0.2, -1],
+        diffuse=[0.7, 0.7, 0.7],
+        ambient=[0.3, 0.3, 0.3],
+        castshadow=False,
+    )
     world.add_geom(
         name="floor",
         type=mujoco.mjtGeom.mjGEOM_PLANE,
