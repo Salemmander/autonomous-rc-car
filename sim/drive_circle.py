@@ -5,10 +5,12 @@ import mujoco
 import mujoco.viewer
 
 from assets.car import build_model
+from assets.track import oval_centerline, start_pose
 from config import load_config
 
 cfg = load_config()
-spec, model = build_model(cfg)
+centerline = oval_centerline()
+spec, model = build_model(cfg, centerline)
 
 data = mujoco.MjData(model)
 
@@ -20,6 +22,8 @@ L = cfg.geometry.wheelbase
 # qpos layout, from the joint order in build_car:
 # 0 = x, 1 = y, 2 = yaw, 3 = left front steer, 4 = right front steer
 X, Y, YAW, STEER_L, STEER_R = range(5)
+
+data.qpos[X], data.qpos[Y], data.qpos[YAW] = start_pose(centerline)
 
 with mujoco.viewer.launch_passive(model, data) as viewer:
     while viewer.is_running():

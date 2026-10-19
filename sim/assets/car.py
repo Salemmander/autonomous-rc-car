@@ -11,13 +11,17 @@ import math
 
 import mujoco
 import mujoco.viewer
+import numpy as np
 
+from assets.track import build_track, oval_centerline
 from config import CarConfig, load_config
 
 WHEEL_WIDTH = 0.025  # visual only, not worth a config entry yet
 
 
 def build_scene(spec: mujoco.MjSpec) -> None:
+    # MjSpec defaults to degrees like XML; everything in this sim is radians
+    spec.compiler.degree = False
     spec.option.disableflags |= mujoco.mjtDisableBit.mjDSBL_CONTACT
 
     # Checker floor so motion is visible in the onboard camera
@@ -120,13 +124,17 @@ def build_car(spec: mujoco.MjSpec, cfg: CarConfig) -> None:
     _add_camera(car, "chase", [-0.6, 0, 0.35], math.radians(-25), 60)
 
 
-def build_model(cfg: CarConfig) -> tuple[mujoco.MjSpec, mujoco.MjModel]:
+def build_model(
+    cfg: CarConfig, centerline: np.ndarray | None = None
+) -> tuple[mujoco.MjSpec, mujoco.MjModel]:
     spec = mujoco.MjSpec()
     build_scene(spec)
+    if centerline is not None:
+        build_track(spec, centerline)
     build_car(spec, cfg)
     return spec, spec.compile()
 
 
 if __name__ == "__main__":
-    spec, model = build_model(load_config())
+    spec, model = build_model(load_config(), oval_centerline())
     mujoco.viewer.launch(model)
