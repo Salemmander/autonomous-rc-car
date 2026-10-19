@@ -1,0 +1,27 @@
+[camera]
+width = 160
+height = 120
+fov_y_deg = 60.0
+pos = [0.10, 0.0, 0.12]
+pitch_deg = -20.0
+
+[steering]
+servo_left = 0
+servo_center = 85
+servo_right = 170
+max_angle_deg = 25.0
+
+[throttle]
+max_speed = 1.5
+min_duty = 0
+
+[geometry]
+wheelbase = 0.20
+track_width = 0.16
+wheel_radius = 0.033
+length = 0.30
+width = 0.18
+
+[control]
+rate_hz = 20
+latency_s = 0.05
