@@ -10,13 +10,13 @@ into qpos; MuJoCo is only used to render.
 
 import warp as wp
 
-MAX_STEPS = 600  # 30 s at 20 Hz, about 4 laps of the oval at full speed
 SUBSTEPS = wp.constant(4)  # integrate the bicycle model in smaller steps for accuracy
 SEARCH_WINDOW = wp.constant(10)  # +-points to search around last step's nearest point
 LOOKAHEAD = wp.constant(3)  # centerline points given to the policy as observations
 LOOKAHEAD_STRIDE = wp.constant(10)  # points between them (about 0.5 m on the oval)
-OFF_TRACK_PENALTY = wp.constant(5.0)  # reward when leaving the track; tune this
 OBS_DIM = 5 + 2 * LOOKAHEAD  # wp.constant returns the plain int, so this works
+# Reward terms written out separately for logging: progress, off_track, center, steer_rate
+NUM_REWARD_TERMS = 4
 
 # Reset noise so the policy sees more than the perfect starting pose
 START_OFFSET_FRAC = wp.constant(0.3)  # of the half width
@@ -43,6 +43,18 @@ class CarParams:
     max_steer: float  # rad
     max_speed: float  # m/s
     dt: float  # seconds per policy step
+
+
+@wp.struct
+class EnvParams:
+    """Runtime knobs from experiment.py (EnvConfig, RewardConfig). Changing these
+    needs no recompile, unlike wp.constant."""
+
+    episode_steps: int
+    w_progress: float
+    w_off_track: float
+    w_center: float
+    w_steer_rate: float
 
 
 @wp.func
@@ -155,12 +167,15 @@ def step(
     qpos: wp.array2d[float],
     track: TrackData,
     car: CarParams,
+    params: EnvParams,
     idx: wp.array1d[int],
     s_prev: wp.array1d[float],
     speed: wp.array1d[float],
     steer: wp.array1d[float],
     obs: wp.array2d[float],
     reward: wp.array1d[float],
+    reward_terms: wp.array2d[float],
+    progress: wp.array1d[float],
     done: wp.array1d[float],
     truncated: wp.array1d[float],
     final_obs: wp.array2d[float],
@@ -193,6 +208,8 @@ def step(
     qpos[i, STEER_L] = delta
     qpos[i, STEER_R] = delta
     speed[i] = v
+    # Steering change since last step, in [-2, 2] (steering itself is in [-1, 1])
+    steer_change = (delta - steer[i]) / car.max_steer
     steer[i] = delta
 
     # Where are we on the track now?
@@ -209,15 +226,30 @@ def step(
     elif ds < -track.length * 0.5:
         ds += track.length
     s_prev[i] = s
+    progress[i] = ds  # meters along the track this step, for logging laps
 
     off_track = wp.abs(offset) > track.half_width
     steps[i] += 1
-    timeout = steps[i] >= MAX_STEPS
+    timeout = steps[i] >= params.episode_steps
 
-    # Scaled so full speed along the track earns about 1 per step
-    reward[i] = ds / (car.max_speed * car.dt)
+    # Reward = weighted sum of terms (weights from experiment.py RewardConfig)
+    offset_n = offset / track.half_width  # 0 = middle, +-1 = on the tape
+    r_progress = params.w_progress * ds / (car.max_speed * car.dt)  # full speed ~1
+    r_center = -params.w_center * offset_n * offset_n
+    r_steer_rate = -params.w_steer_rate * steer_change * steer_change
+    r_off_track = 0.0
     if off_track:
-        reward[i] = -OFF_TRACK_PENALTY
+        # Leaving the track is only the penalty, no credit for that last step
+        r_progress = 0.0
+        r_center = 0.0
+        r_steer_rate = 0.0
+        r_off_track = -params.w_off_track
+
+    reward[i] = r_progress + r_off_track + r_center + r_steer_rate
+    reward_terms[i, 0] = r_progress
+    reward_terms[i, 1] = r_off_track
+    reward_terms[i, 2] = r_center
+    reward_terms[i, 3] = r_steer_rate
 
     is_done = off_track or timeout
     done[i] = 1.0 if is_done else 0.0
@@ -240,6 +272,7 @@ def reset_all(
     qpos: wp.array2d[float],
     track: TrackData,
     car: CarParams,
+    params: EnvParams,
     idx: wp.array1d[int],
     s_prev: wp.array1d[float],
     speed: wp.array1d[float],
@@ -259,7 +292,7 @@ def reset_all(
     )
     # Start each world at a random point in its time limit. Otherwise all worlds
     # time out on the same step forever, and training sees bursts of resets
-    steps[i] = wp.randi(wp.rand_init(seed + 1, i), 0, MAX_STEPS)
+    steps[i] = wp.randi(wp.rand_init(seed + 1, i), 0, params.episode_steps)
     write_obs(i, qpos, track, car, idx, speed, steer, obs)
     reward[i] = 0.0
     done[i] = 0.0

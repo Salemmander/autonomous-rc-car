@@ -21,19 +21,16 @@ class RolloutBuffer:
         self.advantages = zeros(T, W)
         self.returns = zeros(T, W)
 
-        # Per-world running totals for the episode in progress (for logging)
-        self.ep_return = zeros(W)
-        self.ep_len = zeros(W)
-        self.ep_progress = zeros(W)  # meters along the track
-
     def collect_rollout(self, env, actor, critic, obs, reward_scale, gamma):
         """Run the policy for T steps in every world. Returns the last obs and stats.
 
-        Stats stay on the GPU as tensors; reading them (.item()) forces a sync, so
-        the caller only does that when it prints.
+        Stats are rates and per-step averages, not per-episode numbers: a rollout
+        (1.6 s) often contains no finished episodes, especially when many worlds
+        time out together. They stay on the GPU as tensors; reading them (.item())
+        forces a sync, so the caller only does that when it logs.
         """
-        meters_per_reward = env.car.max_speed * env.car.dt
-        stats = torch.zeros(6, device="cuda")  # see the names in the return below
+        # [crashes, meters, speed, |offset|, |steer change|, then one per reward term]
+        stats = torch.zeros(5 + env.reward_terms_t.shape[1], device="cuda")
 
         with torch.no_grad():
             for step in range(self.rollout_steps):
@@ -53,39 +50,43 @@ class RolloutBuffer:
                 self.rewards[step] = reward * reward_scale + gamma * bootstrap
                 self.dones[step] = done
 
-                off_track = done * (1 - truncated)
-                self.ep_return += reward
-                self.ep_len += 1
-                self.ep_progress += (
-                    reward.clamp(min=0) * meters_per_reward * (1 - off_track)
-                )
-                stats += torch.stack(
+                stats += torch.cat(
                     [
-                        done.sum(),
-                        off_track.sum(),
-                        (self.ep_return * done).sum(),
-                        (self.ep_len * done).sum(),
-                        (self.ep_progress * done).sum(),
-                        obs[:, 3].sum(),  # speed / max_speed
+                        torch.stack(
+                            [
+                                (done * (1 - truncated)).sum(),  # left the track
+                                env.progress_t.sum(),  # meters along the track
+                                obs[:, 3].sum(),  # speed / max_speed
+                                obs[:, 0].abs().sum(),  # |offset|, 1 = on the tape
+                                # |steering change| this step, in [-1, 1] units.
+                                # `obs` is the env's output tensor, already
+                                # overwritten by this step, so "before" comes from
+                                # the buffer copy. Skipped on resets (steering -> 0)
+                                (
+                                    (out.obs[:, 4] - self.obs[step, :, 4]).abs()
+                                    * (1 - done)
+                                ).sum(),
+                            ]
+                        ),
+                        env.reward_terms_t.sum(0),
                     ]
                 )
-                keep = 1 - done
-                self.ep_return *= keep
-                self.ep_len *= keep
-                self.ep_progress *= keep
-
                 obs = out.obs
 
-        finished = stats[0].clamp(min=1)
+        samples = self.rollout_steps * self.num_worlds
+        minutes = samples * env.car.dt / 60  # total driving time across all worlds
+        terms = stats[5:] / samples  # average per step
         return obs, {
-            "episodes": stats[0],
-            "off_track_frac": stats[1] / finished,
-            "return": stats[2] / finished,
-            "length": stats[3] / finished,
-            "laps": stats[4] / finished / env.track.length,
-            "speed": stats[5]
-            / (self.rollout_steps * self.num_worlds)
-            * env.car.max_speed,
+            "drive/crashes_per_min": stats[0] / minutes,
+            "drive/laps_per_min": stats[1] / env.track.length / minutes,
+            "drive/speed": stats[2] / samples * env.car.max_speed,
+            "drive/offset_abs": stats[3] / samples,
+            "drive/steer_change": stats[4] / samples,
+            "reward/total": terms.sum(),
+            "reward/progress": terms[0],
+            "reward/off_track": terms[1],
+            "reward/center": terms[2],
+            "reward/steer_rate": terms[3],
         }
 
     def compute_gae(self, next_value, gamma, gae_lambda):

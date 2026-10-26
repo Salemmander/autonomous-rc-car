@@ -14,7 +14,16 @@ import warp as wp
 from assets.car import build_model
 from assets.track import Track, oval_centerline
 from config import load_config
-from env.kernels import OBS_DIM, CarParams, TrackData, reset_all, step
+from env.kernels import (
+    NUM_REWARD_TERMS,
+    OBS_DIM,
+    CarParams,
+    EnvParams,
+    TrackData,
+    reset_all,
+    step,
+)
+from experiment import RewardConfig, load_experiment
 
 
 @dataclass
@@ -39,7 +48,13 @@ def _vec2(a: np.ndarray) -> wp.array:
 
 class CarEnv:
     def __init__(
-        self, num_worlds=4096, seed=42, render=False, track: Track | None = None
+        self,
+        num_worlds=4096,
+        seed=42,
+        render=False,
+        track: Track | None = None,
+        reward: RewardConfig | None = None,
+        episode_steps: int | None = None,
     ):
         # Torch and Warp share one stream so they never race each other. It's a
         # torch-made (non-blocking) stream: PyTorch can't record CUDA graphs on
@@ -80,6 +95,18 @@ class CarEnv:
         self.car.max_speed = cfg.throttle.max_speed
         self.car.dt = cfg.control.dt
 
+        # Anything not given comes from experiments/baseline.toml
+        if reward is None or episode_steps is None:
+            baseline = load_experiment()
+            reward = reward or baseline.reward
+            episode_steps = episode_steps or baseline.env.episode_steps
+        self.params = EnvParams()
+        self.params.episode_steps = episode_steps
+        self.params.w_progress = reward.progress
+        self.params.w_off_track = reward.off_track
+        self.params.w_center = reward.center
+        self.params.w_steer_rate = reward.steer_rate
+
         def zeros(shape, dtype=float):
             arr = wp.zeros(shape, dtype=dtype)
             return arr, wp.to_torch(arr)
@@ -88,6 +115,9 @@ class CarEnv:
         self.obs, self.obs_t = zeros((num_worlds, OBS_DIM))
         self.final_obs, self.final_obs_t = zeros((num_worlds, OBS_DIM))
         self.reward, self.reward_t = zeros(num_worlds)
+        # Each reward term separately, for logging (order in env/kernels.py)
+        self.reward_terms, self.reward_terms_t = zeros((num_worlds, NUM_REWARD_TERMS))
+        self.progress, self.progress_t = zeros(num_worlds)  # meters this step
         self.done, self.done_t = zeros(num_worlds)  # 1.0 == done
         self.truncated, self.truncated_t = zeros(num_worlds)
 
@@ -129,6 +159,7 @@ class CarEnv:
                 self.device_data.qpos,
                 self.track_data,
                 self.car,
+                self.params,
                 self.idx,
                 self.s_prev,
                 self.speed,
@@ -171,12 +202,15 @@ class CarEnv:
                 self.device_data.qpos,
                 self.track_data,
                 self.car,
+                self.params,
                 self.idx,
                 self.s_prev,
                 self.speed,
                 self.steer,
                 self.obs,
                 self.reward,
+                self.reward_terms,
+                self.progress,
                 self.done,
                 self.truncated,
                 self.final_obs,
