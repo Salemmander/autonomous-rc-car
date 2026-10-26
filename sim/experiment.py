@@ -13,6 +13,8 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any
 
+from assets.track_gen import TrackGenConfig
+
 BASELINE = Path(__file__).parent / "experiments" / "baseline.toml"
 
 
@@ -53,10 +55,16 @@ class ExperimentConfig:
     seed: int
     env: EnvConfig
     reward: RewardConfig
+    tracks: TrackGenConfig
     ppo: PPOConfig
 
 
-SECTIONS = {"env": EnvConfig, "reward": RewardConfig, "ppo": PPOConfig}
+SECTIONS = {
+    "env": EnvConfig,
+    "reward": RewardConfig,
+    "tracks": TrackGenConfig,
+    "ppo": PPOConfig,
+}
 TOP_LEVEL = ("name", "seed")
 
 

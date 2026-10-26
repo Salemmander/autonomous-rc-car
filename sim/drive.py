@@ -1,9 +1,12 @@
 """Drive the sim car around the track with an Xbox controller.
 
 Right trigger = forward, left trigger = reverse, left stick = steer, A = reset.
-Run from sim/: uv run python drive.py
+Run from sim/:
+    uv run python drive.py            # the oval
+    uv run python drive.py --track 3  # random track 3 (same numbers as show_tracks.py)
 """
 
+import argparse
 import math
 import time
 
@@ -12,11 +15,21 @@ import mujoco.viewer
 
 from assets.car import build_model
 from assets.track import Track, oval_centerline
+from assets.track_gen import generate_track
 from config import load_config
 from controller import XboxController
+from experiment import load_experiment
+
+parser = argparse.ArgumentParser(description="Drive the sim car with an Xbox controller")
+parser.add_argument("--track", type=int, help="random track number (default: the oval)")
+args = parser.parse_args()
 
 cfg = load_config()
-track = Track.from_centerline(oval_centerline())
+if args.track is None:
+    track = Track.from_centerline(oval_centerline())
+else:
+    exp = load_experiment()
+    track = generate_track(exp.seed, args.track, exp.tracks)
 spec, model = build_model(cfg, track)
 
 data = mujoco.MjData(model)

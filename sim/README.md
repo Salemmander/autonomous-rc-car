@@ -88,7 +88,21 @@ After that it's just a knob.
 
 These are rates, not per-episode numbers, so they're meaningful for every rollout.
 
+## Random tracks
+
+`assets/track_gen.py` makes random closed tracks: a random polygon with every corner
+rounded into an arc, so they have straights, S-bends, and hairpins, but no curve
+tighter than the car can drive. Its knobs are `[tracks]` in `baseline.toml` (not
+used by training yet). Track N for a seed is always the same track.
+
+```bash
+uv run python show_tracks.py                                # tracks 0-15, top-down -> tracks.png
+uv run python show_tracks.py --first 16                     # the next 16
+uv run python show_tracks.py --set 'tracks.corners=[8,20]'  # try a setting
+uv run python drive.py --track 3                            # drive track 3 yourself
+```
+
 ## Other scripts
 
-- `drive.py`: drive the car yourself with an Xbox controller
+- `drive.py`: drive the car yourself with an Xbox controller (`--track N` for a random track)
 - `bench.py`: env steps per second, with and without camera rendering

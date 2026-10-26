@@ -21,6 +21,16 @@ off_track = 5.0  # penalty once, when the car crosses the tape (episode ends)
 center = 0.5     # penalty x offset^2 per step, offset in [-1, 1] (1 = on the tape)
 steer_rate = 0.5 # penalty x (steering change per step)^2, steering in [-1, 1]
 
+[tracks]
+# Random track generator (assets/track_gen.py). Ranges are [min, max].
+# Not used by training yet. Preview with: uv run python show_tracks.py
+corners = [6, 16]         # polygon corners the track is rounded from; more = twistier
+radius = [0.5, 4.3]       # m, corner distance from the middle; uneven = hairpins and S-bends
+turn_radius = [0.6, 3.0]  # m, curve radius at each corner; the car's own minimum is ~0.43
+width = [0.5, 0.8]        # m, between the tapes (the car is 0.18 m wide)
+length = [8.0, 30.0]      # m, once around
+gap = 0.3                 # m, minimum space between tapes of different parts of the track
+
 [ppo]
 iterations = 300      # each one = collect a rollout, then update
 checkpoint_every = 50 # save actor_iterNNNN.pt every this many iterations; 0 = off
