@@ -1,19 +1,22 @@
 """Tracks: a closed centerline, plus tape geoms drawn along its edges.
 
-The centerline is the single source of truth. The tape visuals here and (later)
-the progress and off-track reward are both computed from it.
+The centerline is the single source of truth. The tape visuals, the off-track
+check, and the progress reward are all computed from it.
+
+The numpy math here is the CPU reference, used by the viewer scripts. The GPU env
+(env/kernels.py) does the same math in Warp for every world at once.
 """
 
 import math
+from dataclasses import dataclass
 
 import mujoco
 import numpy as np
 
 TRACK_WIDTH = 0.6  # m, about 3 car widths
 TAPE_WIDTH = 0.03  # m
-TAPE_HEIGHT = (
-    0.001  # half-thickness; tape floats just above the floor to avoid z-fighting
-)
+# Half-thickness; tape floats just above the floor to avoid z-fighting
+TAPE_HEIGHT = 0.001
 
 
 def oval_centerline(a: float = 2.0, b: float = 1.2, n: int = 200) -> np.ndarray:
@@ -27,17 +30,65 @@ def oval_centerline(a: float = 2.0, b: float = 1.2, n: int = 200) -> np.ndarray:
     return np.stack([a * np.cos(t), b * np.sin(t)], axis=1)
 
 
-def tangents(centerline: np.ndarray) -> np.ndarray:
-    """Unit direction from each point to the next, wrapping from the last to the first."""
-    d = np.roll(centerline, -1, axis=0) - centerline
-    return d / np.linalg.norm(d, axis=1, keepdims=True)
+@dataclass(frozen=True)
+class Track:
+    """A closed track with everything derived from its centerline precomputed.
 
+    Arrays are indexed by centerline point. Segment i runs from point i to i+1,
+    wrapping from the last point back to the first.
+    """
 
-def start_pose(centerline: np.ndarray) -> tuple[float, float, float]:
-    """(x, y, yaw) at the first centerline point, facing along the track."""
-    tx, ty = tangents(centerline)[0]
-    x, y = centerline[0]
-    return float(x), float(y), math.atan2(ty, tx)
+    centerline: np.ndarray  # (n, 2) points
+    width: float
+    tangents: np.ndarray  # (n, 2) unit direction of segment i
+    normals: np.ndarray  # (n, 2) unit vector to the left of segment i
+    s: np.ndarray  # (n,) distance along the track from point 0 to point i
+    length: float  # once around the loop
+
+    @classmethod
+    def from_centerline(cls, centerline: np.ndarray, width: float = TRACK_WIDTH):
+        d = np.roll(centerline, -1, axis=0) - centerline
+        seg_len = np.linalg.norm(d, axis=1)
+        t = d / seg_len[:, None]
+        n = np.stack([-t[:, 1], t[:, 0]], axis=1)  # tangent rotated 90 degrees left
+        s = np.concatenate([[0.0], np.cumsum(seg_len)[:-1]])
+        return cls(centerline, width, t, n, s, float(seg_len.sum()))
+
+    def project(self, xy: np.ndarray) -> tuple[int, float, float]:
+        """(nearest index, lateral offset, distance along the track) for a position.
+
+        offset: signed distance from the centerline, positive = left. Off the track
+        when abs(offset) > width / 2.
+        s: how far around the loop, in [0, length). Projected onto the tangent so
+        it moves smoothly between points instead of jumping point to point.
+
+        Brute-force nearest point. The GPU version searches near the last index
+        instead, which is faster and can't snap to a different part of the track.
+        """
+        i = int(np.argmin(np.sum((self.centerline - xy) ** 2, axis=1)))
+        rel = xy - self.centerline[i]
+        offset = float(rel @ self.normals[i])
+        s = (self.s[i] + float(rel @ self.tangents[i])) % self.length
+        return i, offset, s
+
+    def progress(self, s_old: float, s_new: float) -> float:
+        """Distance moved along the track, handling the jump at the start line.
+
+        Crossing the start line forward takes s from ~length back to ~0. Any move
+        bigger than half a lap must be that wrap, not real motion.
+        """
+        ds = s_new - s_old
+        if ds > self.length / 2:
+            ds -= self.length
+        elif ds < -self.length / 2:
+            ds += self.length
+        return ds
+
+    def start_pose(self, i: int = 0) -> tuple[float, float, float]:
+        """(x, y, yaw) at centerline point i, facing along the track."""
+        x, y = self.centerline[i]
+        tx, ty = self.tangents[i]
+        return float(x), float(y), math.atan2(ty, tx)
 
 
 def _add_tape(spec: mujoco.MjSpec, points: np.ndarray, name: str) -> None:
@@ -59,12 +110,7 @@ def _add_tape(spec: mujoco.MjSpec, points: np.ndarray, name: str) -> None:
         )
 
 
-def build_track(
-    spec: mujoco.MjSpec, centerline: np.ndarray, width: float = TRACK_WIDTH
-) -> None:
-    t = tangents(centerline)
-    # Rotate the tangent 90 degrees counterclockwise: points to the left of the road
-    normals = np.stack([-t[:, 1], t[:, 0]], axis=1)
-
-    _add_tape(spec, centerline + normals * width / 2, "tape_left")
-    _add_tape(spec, centerline - normals * width / 2, "tape_right")
+def build_track(spec: mujoco.MjSpec, track: Track) -> None:
+    edge = track.normals * track.width / 2
+    _add_tape(spec, track.centerline + edge, "tape_left")
+    _add_tape(spec, track.centerline - edge, "tape_right")

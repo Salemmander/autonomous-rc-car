@@ -21,7 +21,10 @@ class XboxController:
 
         # Each axis reports its own min/max (triggers are 0-255 on some
         # connections and 0-1023 on others), so normalize with those
-        self.absinfo = dict(self.device.capabilities(absinfo=True)[ecodes.EV_ABS])
+        self.absinfo = {
+            code: self.device.absinfo(code)
+            for code in (ecodes.ABS_X, ecodes.ABS_Z, ecodes.ABS_RZ)
+        }
 
         self.steering = 0.0  # -1 (stick left) to 1 (stick right)
         self.forward = 0.0  # 0 to 1

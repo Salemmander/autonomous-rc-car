@@ -11,9 +11,8 @@ import math
 
 import mujoco
 import mujoco.viewer
-import numpy as np
 
-from assets.track import build_track, oval_centerline
+from assets.track import Track, build_track, oval_centerline
 from config import CarConfig, load_config
 
 WHEEL_WIDTH = 0.025  # visual only, not worth a config entry yet
@@ -132,16 +131,16 @@ def build_car(spec: mujoco.MjSpec, cfg: CarConfig) -> None:
 
 
 def build_model(
-    cfg: CarConfig, centerline: np.ndarray | None = None
+    cfg: CarConfig, track: Track | None = None
 ) -> tuple[mujoco.MjSpec, mujoco.MjModel]:
     spec = mujoco.MjSpec()
     build_scene(spec)
-    if centerline is not None:
-        build_track(spec, centerline)
+    if track is not None:
+        build_track(spec, track)
     build_car(spec, cfg)
     return spec, spec.compile()
 
 
 if __name__ == "__main__":
-    spec, model = build_model(load_config(), oval_centerline())
+    spec, model = build_model(load_config(), Track.from_centerline(oval_centerline()))
     mujoco.viewer.launch(model)
