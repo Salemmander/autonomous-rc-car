@@ -1,4 +1,7 @@
-"""Train a state-based driving policy with PPO on the GPU car env.
+"""Train a camera-based driving policy with PPO on the GPU car env.
+
+The actor (PilotNet) only sees the car's camera; the critic sees sim-only state
+during training (asymmetric actor-critic). Only the actor goes on the car.
 
 Run from sim/:
     uv run python train.py                                  # experiments/baseline.toml
@@ -23,7 +26,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from env.car_env import CarEnv
 from experiment import load_experiment, to_toml
-from model.agent import Actor, Critic
+from model.agent import Critic, PilotNetActor
 from ppo.graph import Graphed
 from ppo.ppo import ppo_update
 from ppo.rollout import RolloutBuffer
@@ -63,10 +66,13 @@ torch.manual_seed(cfg.seed)
 env = CarEnv(
     num_worlds=cfg.env.num_worlds,
     seed=cfg.seed,
+    render=True,  # the actor drives from the camera
     reward=cfg.reward,
     episode_steps=cfg.env.episode_steps,
 )
-actor = Actor(env.obs_dim, env.action_dim, ppo.hidden_dim).cuda()
+assert env.pixel_shape is not None
+actor = PilotNetActor(env.pixel_shape, env.action_dim).cuda()
+actor = actor.to(memory_format=torch.channels_last)  # faster convs
 critic = Critic(env.obs_dim, ppo.hidden_dim).cuda()
 # lr is a GPU tensor so the decay below can change it without re-recording the graph
 lr = torch.tensor(ppo.lr, device="cuda")
@@ -76,14 +82,13 @@ optimizer = Adam(
     fused=True,  # one kernel for the whole optimizer step
     capturable=True,  # optimizer step can be recorded in a CUDA graph
 )
-buffer = RolloutBuffer(ppo.rollout_steps, cfg.env.num_worlds, env.obs_dim, env.action_dim)
+buffer = RolloutBuffer(
+    ppo.rollout_steps, cfg.env.num_worlds, env.obs_dim, env.action_dim, env.pixel_shape
+)
 
 
 def rollout():
-    # env.obs_t is the env's fixed output tensor: every step writes the new obs there
-    _, stats = buffer.collect_rollout(
-        env, actor, critic, env.obs_t, ppo.reward_scale, ppo.gamma
-    )
+    stats = buffer.collect_rollout(env, actor, critic, ppo.reward_scale, ppo.gamma)
     with torch.no_grad():
         next_value = critic(env.obs_t)
     buffer.compute_gae(next_value, ppo.gamma, ppo.gae_lambda)

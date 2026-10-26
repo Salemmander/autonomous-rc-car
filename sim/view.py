@@ -8,6 +8,7 @@ Run from sim/:
     uv run python view.py                   # latest run in runs/
     uv run python view.py runs/<run>        # a specific run
     uv run python view.py --stochastic      # with exploration noise, like training
+    uv run python view.py --car-view        # see what the car's camera sees
 """
 
 import argparse
@@ -21,7 +22,7 @@ import warp as wp
 
 from env.car_env import CarEnv
 from experiment import load_experiment
-from model.agent import Actor
+from model.agent import PilotNetActor
 
 wp.config.log_level = wp.LOG_WARNING
 RUNS_DIR = Path(__file__).parent / "runs"
@@ -33,6 +34,11 @@ parser.add_argument(
     action="store_true",
     help="sample actions like during training, instead of the mean (what the car runs)",
 )
+parser.add_argument(
+    "--car-view",
+    action="store_true",
+    help="start on the car's own camera (front) instead of the chase camera",
+)
 parser.add_argument("--seed", type=int, default=0)
 args = parser.parse_args()
 
@@ -43,31 +49,37 @@ print(f"viewing {run}")
 env = CarEnv(
     num_worlds=1,
     seed=args.seed,
+    render=True,  # the actor drives from the camera
     reward=cfg.reward,
     episode_steps=cfg.env.episode_steps,
 )
-actor = Actor(env.obs_dim, env.action_dim, cfg.ppo.hidden_dim).cuda()
+assert env.pixel_shape is not None
+actor = PilotNetActor(env.pixel_shape, env.action_dim).cuda()
 actor.load_state_dict(torch.load(run / "actor.pt", map_location="cuda"))
 actor.eval()
 
 model = env.model
 data = mujoco.MjData(model)
 
-obs = env.reset().obs
+start = env.reset()
+obs, pixels = start.obs, start.pixels
 distance = 0.0  # meters along the track this episode
 episodes = crashes = 0
 
 with mujoco.viewer.launch_passive(model, data) as viewer:
-    # Start on the chase camera that follows the car (switch in the viewer's panel)
+    # Start on the chase camera that follows the car, or with --car-view the car's
+    # own camera (switch either way in the viewer's panel)
     viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
-    viewer.cam.fixedcamid = model.camera("chase").id
+    viewer.cam.fixedcamid = model.camera("front" if args.car_view else "chase").id
     while viewer.is_running():
         tick = time.perf_counter()
 
         with torch.no_grad():
-            action = actor.get_dist(obs).sample() if args.stochastic else actor(obs)
+            assert pixels is not None  # render=True
+            dist = actor.get_dist(pixels)
+            action = dist.sample() if args.stochastic else dist.mean
         out = env.step(action.clamp(-1.0, 1.0))
-        obs = out.obs
+        obs, pixels = out.obs, out.pixels
 
         reward = out.reward.item()
         terms = env.reward_terms_t[0].tolist()

@@ -14,7 +14,8 @@ def ppo_update(
     max_grad_norm=0.5,
 ):
     # (T, W, ...) -> (T*W, ...): every step of every world is one sample
-    obs = buffer.obs.flatten(0, 1)
+    obs = buffer.obs.flatten(0, 1)  # critic input (sim state)
+    pixels = buffer.pixels.flatten(0, 1)  # actor input (camera)
     actions = buffer.actions.flatten(0, 1)
     old_log_probs = buffer.log_probs.flatten()
     returns = buffer.returns.flatten()
@@ -33,7 +34,7 @@ def ppo_update(
         for start in range(0, batch_size, minibatch_size):
             mb = indices[start : start + minibatch_size]
 
-            dist = actor.get_dist(obs[mb])
+            dist = actor.get_dist(pixels[mb])
             new_log_probs = dist.log_prob(actions[mb]).sum(-1)
             entropy = dist.entropy().sum(-1).mean()
 

@@ -9,7 +9,7 @@ name = "baseline" # run folders are named <name>_<date>_<time>
 seed = 42
 
 [env]
-num_worlds = 4096   # cars driving in parallel
+num_worlds = 1024  # cars in parallel; their camera frames fill GPU memory
 episode_steps = 600 # time limit per episode: 600 = 30 s at 20 Hz
 
 [reward]
@@ -24,10 +24,10 @@ steer_rate = 0.0 # penalty x (steering change per step)^2, steering in [-1, 1]
 [ppo]
 iterations = 300       # each one = collect a rollout, then update
 rollout_steps = 32     # steps per world per rollout (32 = 1.6 s of driving)
-lr = 1e-3              # decays linearly to 0 over the run
-minibatch_size = 32768
+lr = 3e-4  # decays linearly to 0 over the run
+minibatch_size = 4096  # samples per gradient step; bigger runs out of GPU memory (10 GB)
 update_epochs = 4      # passes over each rollout
-hidden_dim = 128       # width of the 2 hidden layers (actor and critic)
+hidden_dim = 128  # critic width (the actor is PilotNet, fixed size)
 gamma = 0.99           # discount: 0.99 = cares ~100 steps (5 s) ahead
 gae_lambda = 0.95
 reward_scale = 0.1     # rewards are multiplied by this before training

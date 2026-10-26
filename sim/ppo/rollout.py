@@ -2,9 +2,13 @@ import torch
 
 
 class RolloutBuffer:
-    """T steps x W worlds of experience, all on the GPU. Shapes are (T, W, ...)."""
+    """T steps x W worlds of experience, all on the GPU. Shapes are (T, W, ...).
 
-    def __init__(self, rollout_steps, num_worlds, obs_dim, action_dim) -> None:
+    pixels (the actor's camera frames) are stored as uint8: 4x less memory than
+    float, which is what limits how many worlds fit on the GPU.
+    """
+
+    def __init__(self, rollout_steps, num_worlds, obs_dim, action_dim, pixel_shape) -> None:
         T, W = rollout_steps, num_worlds
         self.rollout_steps = T
         self.num_worlds = W
@@ -12,7 +16,8 @@ class RolloutBuffer:
         def zeros(*shape):
             return torch.zeros(shape, device="cuda")
 
-        self.obs = zeros(T, W, obs_dim)
+        self.obs = zeros(T, W, obs_dim)  # sim state, for the critic
+        self.pixels = torch.zeros((T, W, *pixel_shape), dtype=torch.uint8, device="cuda")
         self.actions = zeros(T, W, action_dim)
         self.log_probs = zeros(T, W)
         self.values = zeros(T, W)
@@ -21,8 +26,11 @@ class RolloutBuffer:
         self.advantages = zeros(T, W)
         self.returns = zeros(T, W)
 
-    def collect_rollout(self, env, actor, critic, obs, reward_scale, gamma):
-        """Run the policy for T steps in every world. Returns the last obs and stats.
+    def collect_rollout(self, env, actor, critic, reward_scale, gamma):
+        """Run the policy for T steps in every world. Returns stats.
+
+        Reads the env's fixed output tensors (env.pixels_t, env.obs_t), which each
+        step overwrites in place, so this can be recorded in a CUDA graph.
 
         Stats are rates and per-step averages, not per-episode numbers: a rollout
         (1.6 s) often contains no finished episodes, especially when many worlds
@@ -33,10 +41,12 @@ class RolloutBuffer:
         stats = torch.zeros(5 + env.reward_terms_t.shape[1], device="cuda")
 
         with torch.no_grad():
+            obs, pixels = env.obs_t, env.pixels_t
             for step in range(self.rollout_steps):
-                dist = actor.get_dist(obs)
+                dist = actor.get_dist(pixels)  # the actor only sees the camera
                 action = dist.sample()
                 self.obs[step] = obs
+                self.pixels[step] = pixels
                 self.actions[step] = action
                 self.log_probs[step] = dist.log_prob(action).sum(-1)
                 self.values[step] = critic(obs)
@@ -71,12 +81,11 @@ class RolloutBuffer:
                         env.reward_terms_t.sum(0),
                     ]
                 )
-                obs = out.obs
 
         samples = self.rollout_steps * self.num_worlds
         minutes = samples * env.car.dt / 60  # total driving time across all worlds
         terms = stats[5:] / samples  # average per step
-        return obs, {
+        return {
             "drive/crashes_per_min": stats[0] / minutes,
             "drive/laps_per_min": stats[1] / env.track.length / minutes,
             "drive/speed": stats[2] / samples * env.car.max_speed,

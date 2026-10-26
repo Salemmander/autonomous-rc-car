@@ -3,6 +3,11 @@
 GPU-parallel MuJoCo Warp sim of the RC car, and PPO to train a driving policy in it.
 See `../docs/sim-rl-plan.md` for the overall plan. Run everything from `sim/`.
 
+**The policy drives from the camera only.** The actor is PilotNet (same layers as
+`src/training/pilotnet.py`) on the car's 160x120 camera, preprocessed exactly like on
+the Pi (`env/preprocess.py`: crop the top 30%, RGB). The critic sees sim-only state
+(offset, heading, track ahead), but only during training; it never goes on the car.
+
 ## Train, watch, compare
 
 ```bash
@@ -41,7 +46,7 @@ uv run python train.py experiments/center.toml --set reward.center=1.0 ppo.lr=3e
 
 Misspelled keys and wrong types are errors, so a typo can't silently do nothing.
 
-**A typical loop:** change one thing, train (~12 s), watch it in `view.py`, compare the
+**A typical loop:** change one thing, train (a few minutes), watch it in `view.py`, compare the
 curves against the baseline in TensorBoard, keep or revert.
 
 ## The reward
