@@ -9,6 +9,8 @@ Run from sim/:
     uv run python view.py runs/<run>        # a specific run
     uv run python view.py --stochastic      # with exploration noise, like training
     uv run python view.py --car-view        # see what the car's camera sees
+    uv run python view.py --last            # the final actor instead of the best one
+    uv run python view.py --checkpoint actor_iter0100.pt   # a specific checkpoint
 """
 
 import argparse
@@ -39,6 +41,12 @@ parser.add_argument(
     action="store_true",
     help="start on the car's own camera (front) instead of the chase camera",
 )
+parser.add_argument(
+    "--last",
+    action="store_true",
+    help="load actor.pt (end of training) instead of the best checkpoint",
+)
+parser.add_argument("--checkpoint", help="file in the run folder, e.g. actor_iter0100.pt")
 parser.add_argument("--seed", type=int, default=0)
 args = parser.parse_args()
 
@@ -55,7 +63,16 @@ env = CarEnv(
 )
 assert env.pixel_shape is not None
 actor = PilotNetActor(env.pixel_shape, env.action_dim).cuda()
-actor.load_state_dict(torch.load(run / "actor.pt", map_location="cuda"))
+# Default: the best checkpoint (actor_iterNNNN_best.pt), else the final actor.pt
+best = sorted(run.glob("actor_iter*_best.pt"))
+if args.checkpoint:
+    actor_file = run / args.checkpoint
+elif best and not args.last:
+    actor_file = best[-1]
+else:
+    actor_file = run / "actor.pt"
+print(f"loading {actor_file.name}")
+actor.load_state_dict(torch.load(actor_file, map_location="cuda"))
 actor.eval()
 
 model = env.model

@@ -23,6 +23,7 @@ steer_rate = 0.5 # penalty x (steering change per step)^2, steering in [-1, 1]
 
 [ppo]
 iterations = 300      # each one = collect a rollout, then update
+checkpoint_every = 50 # save actor_iterNNNN.pt every this many iterations; 0 = off
 rollout_steps = 32    # steps per world per rollout (32 = 1.6 s of driving)
 lr = 3e-4             # decays linearly to 0 over the run
 minibatch_size = 4096 # samples per gradient step; bigger runs out of GPU memory (10 GB)

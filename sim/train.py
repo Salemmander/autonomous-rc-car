@@ -9,7 +9,11 @@ Run from sim/:
     uv run python train.py --set reward.steer_rate=1.0 ppo.lr=1e-4 name=smoother_slow_lr
 
 Every knob and its baseline value is in experiments/baseline.toml; other
-experiment files only list what they change. Each run gets a folder in runs/
+experiment files only list what they change.
+
+Saved in the run folder: actor_iterNNNN.pt every `ppo.checkpoint_every`
+iterations, actor_iterNNNN_best.pt at the best reward so far (only the latest best
+is kept), and actor.pt at the end. Each run gets a folder in runs/
 with its full config, the trained actor, and TensorBoard curves:
     uv run tensorboard --logdir runs
 """
@@ -120,12 +124,19 @@ run_update = update if args.no_graphs else Graphed(update)
 env.reset()
 start = time.perf_counter()
 steps_per_iter = ppo.rollout_steps * cfg.env.num_worlds
+# Best average reward per step so far, checked at each log. reward/total is what
+# PPO optimizes, so it accounts for every term (speed, centering, smoothness)
+best_reward = float("-inf")
+best_file: Path | None = None
 
 try:
     for it in range(ppo.iterations):
         lr.fill_(ppo.lr * (1 - it / ppo.iterations))  # linear decay to 0
         roll = run_rollout()
         upd = run_update()
+
+        if ppo.checkpoint_every and (it + 1) % ppo.checkpoint_every == 0:
+            torch.save(actor.state_dict(), run_dir / f"actor_iter{it + 1:04d}.pt")
 
         if it % args.log_every == 0 or it == ppo.iterations - 1:
             torch.cuda.synchronize()  # wait for the GPU before reading the clock
@@ -142,6 +153,14 @@ try:
                 "train/lr": lr.item(),
                 "perf/steps_per_s": env_steps / elapsed,
             }
+            new_best = scalars["reward/total"] > best_reward
+            if new_best:
+                best_reward = scalars["reward/total"]
+                if best_file is not None:
+                    best_file.unlink()  # keep only the latest best
+                best_file = run_dir / f"actor_iter{it + 1:04d}_best.pt"
+                torch.save(actor.state_dict(), best_file)
+            scalars["train/best_reward"] = best_reward
             for k, v in scalars.items():
                 writer.add_scalar(k, v, env_steps)
 
@@ -152,7 +171,7 @@ try:
                 f"| speed {scalars['drive/speed']:4.2f} m/s "
                 f"| |offset| {scalars['drive/offset_abs']:.2f} "
                 f"| steer change {scalars['drive/steer_change']:.3f} "
-                f"| reward {scalars['reward/total']:+.3f} "
+                f"| reward {scalars['reward/total']:+.3f}{'*' if new_best else ' '} "
                 f"| std [{std[0]:.2f} {std[1]:.2f}] "
                 f"| {env_steps / elapsed / 1e6:.2f}M steps/s | {elapsed:5.1f}s"
             )
@@ -160,4 +179,6 @@ finally:
     # Save even if stopped early with Ctrl+C
     torch.save(actor.state_dict(), run_dir / "actor.pt")
     writer.close()
-    print(f"saved {run_dir / 'actor.pt'}")
+    print(f"saved {run_dir / 'actor.pt'} (last)")
+    if best_file is not None:
+        print(f"best: {best_file.name} (reward {best_reward:+.3f})")

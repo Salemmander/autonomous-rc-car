@@ -20,11 +20,16 @@ uv run tensorboard --logdir runs                  # compare runs in the browser
 Each training run creates `runs/<name>_<date>_<time>/` with:
 
 - `config.toml`: every setting the run used
-- `actor.pt`: the trained policy
+- `actor_iterNNNN_best.pt`: the policy at its best reward so far (what `view.py` loads)
+- `actor_iterNNNN.pt`: a checkpoint every `checkpoint_every` iterations
+  (`view.py --checkpoint actor_iter0100.pt`)
+- `actor.pt`: the policy at the end of training (`view.py --last`)
 - TensorBoard curves
 
 `view.py runs/<run>` watches a specific run, and `--stochastic` adds the exploration
 noise used during training.
+
+New bests (average reward per step) are marked with `*` in the console.
 
 ## Experiments
 

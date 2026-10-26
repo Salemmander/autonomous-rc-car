@@ -33,6 +33,7 @@ class EnvConfig:
 @dataclass
 class PPOConfig:
     iterations: int
+    checkpoint_every: int
     rollout_steps: int
     lr: float
     minibatch_size: int
