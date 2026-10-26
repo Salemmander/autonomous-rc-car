@@ -41,14 +41,22 @@ class CarEnv:
     def __init__(
         self, num_worlds=4096, seed=42, render=False, track: Track | None = None
     ):
-        # Run torch on Warp's stream so the two never race each other
-        torch.cuda.set_stream(wp.stream_to_torch(wp.get_stream()))
+        # Torch and Warp share one stream so they never race each other. It's a
+        # torch-made (non-blocking) stream: PyTorch can't record CUDA graphs on
+        # Warp's default stream, which is a blocking one
+        wp.init()
+        stream = torch.cuda.Stream()
+        wp.set_stream(wp.stream_from_torch(stream))
+        torch.cuda.set_stream(stream)
 
         self.num_worlds = num_worlds
         self.obs_dim = OBS_DIM
         self.action_dim = 2
         self.seed = seed
         self.render = render
+        # False when a caller records env.step() into its own CUDA graph (see
+        # ppo/graph.py): a graph can't be launched while another is being recorded
+        self.use_graph = True
 
         cfg = load_config()
         self.track = track or Track.from_centerline(oval_centerline())
@@ -141,7 +149,10 @@ class CarEnv:
 
     def step(self, actions: torch.Tensor) -> StepOutput:
         self.actions_t.copy_(actions)
-        wp.capture_launch(self.graph)  # pyright: ignore[reportArgumentType]
+        if self.use_graph:
+            wp.capture_launch(self.graph)  # pyright: ignore[reportArgumentType]
+        else:
+            self._step_ops()
         return StepOutput(
             obs=self.obs_t,
             rgb=self.rgb_out_t,

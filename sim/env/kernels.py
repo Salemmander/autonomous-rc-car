@@ -257,6 +257,9 @@ def reset_all(
     reset_world(
         i, qpos, track, idx, s_prev, speed, steer, steps, resets, seed, num_worlds
     )
+    # Start each world at a random point in its time limit. Otherwise all worlds
+    # time out on the same step forever, and training sees bursts of resets
+    steps[i] = wp.randi(wp.rand_init(seed + 1, i), 0, MAX_STEPS)
     write_obs(i, qpos, track, car, idx, speed, steer, obs)
     reward[i] = 0.0
     done[i] = 0.0
