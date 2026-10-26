@@ -4,6 +4,7 @@ Right trigger = forward, left trigger = reverse, left stick = steer, A = reset.
 Run from sim/:
     uv run python drive.py            # the oval
     uv run python drive.py --track 3  # random track 3 (same numbers as show_tracks.py)
+    uv run python drive.py --test 3   # held-out test track 3
 """
 
 import argparse
@@ -21,15 +22,19 @@ from controller import XboxController
 from experiment import load_experiment
 
 parser = argparse.ArgumentParser(description="Drive the sim car with an Xbox controller")
-parser.add_argument("--track", type=int, help="random track number (default: the oval)")
+which = parser.add_mutually_exclusive_group()
+which.add_argument("--track", type=int, help="random track number (default: the oval)")
+which.add_argument("--test", type=int, help="held-out test track number")
 args = parser.parse_args()
 
 cfg = load_config()
-if args.track is None:
-    track = Track.from_centerline(oval_centerline())
-else:
-    exp = load_experiment()
+exp = load_experiment()
+if args.track is not None:
     track = generate_track(exp.seed, args.track, exp.tracks)
+elif args.test is not None:
+    track = generate_track(exp.seed, args.test, exp.tracks, test=True)
+else:
+    track = Track.from_centerline(oval_centerline())
 spec, model = build_model(cfg, track)
 
 data = mujoco.MjData(model)

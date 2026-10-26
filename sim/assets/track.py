@@ -91,26 +91,60 @@ class Track:
         return float(x), float(y), math.atan2(ty, tx)
 
 
-def _add_tape(spec: mujoco.MjSpec, points: np.ndarray, name: str) -> None:
-    """One thin box per segment between consecutive points of a closed loop."""
-    nxt = np.roll(points, -1, axis=0)
-    mids = (points + nxt) / 2
-    d = nxt - points
-    lengths = np.linalg.norm(d, axis=1)
-    yaws = np.arctan2(d[:, 1], d[:, 0])
+TAPE_SPACING = 0.05  # m, length of each tape box
+# Boxes are a bit longer than their spacing so curves never show a gap between them
+TAPE_OVERLAP = 1.2
+HIDDEN_Z = -1.0  # unused tape boxes are parked under the floor
 
-    for i, (mid, length, yaw) in enumerate(zip(mids, lengths, yaws)):
-        spec.worldbody.add_geom(
-            name=f"{name}_{i}",
-            type=mujoco.mjtGeom.mjGEOM_BOX,
-            pos=[mid[0], mid[1], TAPE_HEIGHT],
-            size=[length / 2, TAPE_WIDTH / 2, TAPE_HEIGHT],
-            euler=[0, 0, yaw],
-            rgba=[0.95, 0.95, 0.95, 1],
-        )
+
+def resample_loop(points: np.ndarray, spacing: float) -> np.ndarray:
+    """Evenly spaced points along a closed polyline, about `spacing` apart."""
+    closed = np.vstack([points, points[:1]])
+    seg = np.linalg.norm(np.diff(closed, axis=0), axis=1)
+    s = np.concatenate([[0.0], np.cumsum(seg)])
+    n = max(round(s[-1] / spacing), 3)
+    s_new = np.linspace(0, s[-1], n, endpoint=False)
+    return np.stack(
+        [np.interp(s_new, s, closed[:, 0]), np.interp(s_new, s, closed[:, 1])], axis=1
+    )
+
+
+def tape_poses(track: Track) -> np.ndarray:
+    """(m, 3) x, y, yaw of every tape box, both edges.
+
+    Each edge is resampled on its own, so boxes are evenly spaced even where the
+    outside of a curve is much longer than the centerline. Every box is the same
+    size, which lets the GPU env move one shared set of boxes onto any track.
+    """
+    poses = []
+    edge = track.normals * track.width / 2
+    for side in (track.centerline + edge, track.centerline - edge):
+        pts = resample_loop(side, TAPE_SPACING)
+        d = np.roll(pts, -1, axis=0) - pts
+        mids = pts + d / 2
+        poses.append(np.column_stack([mids, np.arctan2(d[:, 1], d[:, 0])]))
+    return np.concatenate(poses)
+
+
+def _add_tape_box(spec: mujoco.MjSpec, name: str, pos, yaw: float) -> None:
+    spec.worldbody.add_geom(
+        name=name,
+        type=mujoco.mjtGeom.mjGEOM_BOX,
+        pos=pos,
+        size=[TAPE_SPACING * TAPE_OVERLAP / 2, TAPE_WIDTH / 2, TAPE_HEIGHT],
+        euler=[0, 0, yaw],
+        rgba=[0.95, 0.95, 0.95, 1],
+    )
 
 
 def build_track(spec: mujoco.MjSpec, track: Track) -> None:
-    edge = track.normals * track.width / 2
-    _add_tape(spec, track.centerline + edge, "tape_left")
-    _add_tape(spec, track.centerline - edge, "tape_right")
+    """Tape for one fixed track (CPU viewers)."""
+    for k, (x, y, yaw) in enumerate(tape_poses(track)):
+        _add_tape_box(spec, f"tape_{k}", [x, y, TAPE_HEIGHT], yaw)
+
+
+def build_tape_pool(spec: mujoco.MjSpec, count: int) -> None:
+    """`count` tape boxes parked under the floor. The GPU env moves them onto each
+    world's own track (env/kernels.py write_tape)."""
+    for k in range(count):
+        _add_tape_box(spec, f"tape_{k}", [0, 0, HIDDEN_Z], 0.0)

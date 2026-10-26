@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from assets.track import Track
+from assets.track import Track, resample_loop
 
 SPACING = 0.05  # m between centerline points, same as the oval
 MAX_EXTENT = 4.5  # m from the middle; the floor is 10 x 10 m (assets/car.py)
@@ -28,6 +28,7 @@ MAX_EXTENT = 4.5  # m from the middle; the floor is 10 x 10 m (assets/car.py)
 class TrackGenConfig:
     """The [tracks] section of an experiment. Ranges are [min, max]."""
 
+    count: int
     corners: list[int]
     radius: list[float]
     turn_radius: list[float]
@@ -76,18 +77,6 @@ def _round_corners(
         phi = phi0 + turn[i] * np.linspace(0, 1, steps + 1)
         path.append(center + radius[i] * np.stack([np.cos(phi), np.sin(phi)], axis=1))
     return np.concatenate(path)  # straights are the gaps between arcs
-
-
-def _resample_loop(points: np.ndarray, spacing: float) -> np.ndarray:
-    """Evenly spaced points along a closed polyline, about `spacing` apart."""
-    closed = np.vstack([points, points[:1]])
-    seg = np.linalg.norm(np.diff(closed, axis=0), axis=1)
-    s = np.concatenate([[0.0], np.cumsum(seg)])
-    n = max(round(s[-1] / spacing), 3)
-    s_new = np.linspace(0, s[-1], n, endpoint=False)
-    return np.stack(
-        [np.interp(s_new, s, closed[:, 0]), np.interp(s_new, s, closed[:, 1])], axis=1
-    )
 
 
 def turn_radii(track: Track) -> np.ndarray:
@@ -144,7 +133,7 @@ def _propose(rng: np.random.Generator, cfg: TrackGenConfig) -> Track | str:
         path = _round_corners(poly, rng, cfg.turn_radius)
     except _TooSharp:
         return "too sharp"
-    centerline = _resample_loop(path, SPACING)
+    centerline = resample_loop(path, SPACING)
     if rng.random() < 0.5:
         centerline = centerline[::-1].copy()  # clockwise half the time
     width = float(rng.uniform(cfg.width[0], cfg.width[1]))
@@ -159,10 +148,14 @@ def _try(rng: np.random.Generator, cfg: TrackGenConfig) -> Track | str:
 
 
 def generate_track(
-    seed: int, index: int, cfg: TrackGenConfig, max_tries: int = 10_000
+    seed: int, index: int, cfg: TrackGenConfig, test: bool = False, max_tries: int = 10_000
 ) -> Track:
-    """Track `index` of the set for `seed`: proposes random tracks until one passes."""
-    rng = np.random.default_rng([seed, index])
+    """Track `index` of the set for `seed`: proposes random tracks until one passes.
+
+    test=True: a separate set the policy never trains on, to check that it learned
+    to follow tape rather than memorizing the training tracks.
+    """
+    rng = np.random.default_rng([seed, index, 1] if test else [seed, index])
     for _ in range(max_tries):
         track = _try(rng, cfg)
         if isinstance(track, Track):
@@ -170,6 +163,11 @@ def generate_track(
     raise RuntimeError(
         f"no valid track in {max_tries} tries; loosen the [tracks] settings"
     )
+
+
+def generate_tracks(seed: int, cfg: TrackGenConfig) -> list[Track]:
+    """The training tracks: 0 to cfg.count - 1 (~6 ms each)."""
+    return [generate_track(seed, i, cfg) for i in range(cfg.count)]
 
 
 def acceptance(cfg: TrackGenConfig, tries: int = 1000, seed: int = 0) -> dict:

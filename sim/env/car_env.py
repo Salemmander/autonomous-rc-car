@@ -1,7 +1,7 @@
 """GPU-parallel car env, the car version of parallel-cartpole's CartPole.
 
-Every world drives the same track for now. Actions are [steer, throttle] in
-[-1, 1].
+Each world drives its own track, picked at random from `tracks` on every reset.
+Actions are [steer, throttle] in [-1, 1].
 
 Two kinds of observation:
 - pixels (render=True): the car's camera, preprocessed exactly like on the Pi
@@ -18,18 +18,19 @@ import torch
 import warp as wp
 
 from assets.car import build_model
-from assets.track import Track, oval_centerline
+from assets.track import Track, oval_centerline, tape_poses
 from config import load_config
-from env.preprocess import crop_top, preprocess
 from env.kernels import (
     NUM_REWARD_TERMS,
     OBS_DIM,
     CarParams,
     EnvParams,
-    TrackData,
+    TrackBank,
     reset_all,
     step,
+    write_tape,
 )
+from env.preprocess import crop_top, preprocess
 from experiment import RewardConfig, load_experiment
 
 
@@ -51,8 +52,31 @@ class ResetOutput:
     pixels: torch.Tensor | None
 
 
-def _vec2(a: np.ndarray) -> wp.array:
-    return wp.array(a.astype(np.float32), dtype=wp.vec2)
+def _pack(rows: list[np.ndarray], dtype) -> wp.array:
+    """Rows of different lengths -> one (len(rows), longest) array, zero padded."""
+    out = np.zeros(
+        (len(rows), max(len(r) for r in rows), *rows[0].shape[1:]), np.float32
+    )
+    for k, r in enumerate(rows):
+        out[k, : len(r)] = r
+    return wp.array(out, dtype=dtype)
+
+
+def make_track_bank(tracks: list[Track]) -> tuple[TrackBank, int]:  # pyright: ignore[reportGeneralTypeIssues]
+    """Tracks -> GPU arrays for the kernels, and how many tape boxes the longest
+    track needs."""
+    tapes = [tape_poses(t) for t in tracks]
+    bank = TrackBank()
+    bank.centerline = _pack([t.centerline for t in tracks], wp.vec2)
+    bank.tangents = _pack([t.tangents for t in tracks], wp.vec2)
+    bank.normals = _pack([t.normals for t in tracks], wp.vec2)
+    bank.s = _pack([t.s for t in tracks], float)
+    bank.n = wp.array([len(t.centerline) for t in tracks], dtype=int)
+    bank.length = wp.array([t.length for t in tracks], dtype=float)
+    bank.half_width = wp.array([t.width / 2 for t in tracks], dtype=float)
+    bank.tape = _pack(tapes, wp.vec3)
+    bank.n_tape = wp.array([len(p) for p in tapes], dtype=int)
+    return bank, max(len(p) for p in tapes)
 
 
 class CarEnv:
@@ -61,7 +85,7 @@ class CarEnv:
         num_worlds=4096,
         seed=42,
         render=False,
-        track: Track | None = None,
+        tracks: list[Track] | None = None,
         reward: RewardConfig | None = None,
         episode_steps: int | None = None,
     ):
@@ -83,20 +107,14 @@ class CarEnv:
         self.use_graph = True
 
         cfg = load_config()
-        self.track = track or Track.from_centerline(oval_centerline())
-        _, self.model = build_model(cfg, self.track)
+        # Track arrays go to the GPU once; kernels only read them
+        self.tracks = tracks or [Track.from_centerline(oval_centerline())]
+        self.bank, self.num_tape = make_track_bank(self.tracks)
+        # One shared set of tape boxes, moved onto each world's track by write_tape
+        _, self.model = build_model(cfg, tape_pool=self.num_tape)
+        self.first_tape = self.model.geom("tape_0").id
         self.device_model = mjw.put_model(self.model)
         self.device_data = mjw.make_data(self.model, nworld=num_worlds)
-
-        # Track arrays go to the GPU once; kernels only read them
-        self.track_data = TrackData()
-        self.track_data.centerline = _vec2(self.track.centerline)
-        self.track_data.tangents = _vec2(self.track.tangents)
-        self.track_data.normals = _vec2(self.track.normals)
-        self.track_data.s = wp.array(self.track.s.astype(np.float32), dtype=float)
-        self.track_data.n = len(self.track.centerline)
-        self.track_data.length = self.track.length
-        self.track_data.half_width = self.track.width / 2
 
         self.car = CarParams()
         self.car.wheelbase = cfg.geometry.wheelbase
@@ -126,7 +144,7 @@ class CarEnv:
         self.reward, self.reward_t = zeros(num_worlds)
         # Each reward term separately, for logging (order in env/kernels.py)
         self.reward_terms, self.reward_terms_t = zeros((num_worlds, NUM_REWARD_TERMS))
-        self.progress, self.progress_t = zeros(num_worlds)  # meters this step
+        self.laps, self.laps_t = zeros(num_worlds)  # laps driven this step
         self.done, self.done_t = zeros(num_worlds)  # 1.0 == done
         self.truncated, self.truncated_t = zeros(num_worlds)
 
@@ -137,6 +155,7 @@ class CarEnv:
         self.steer, _ = zeros(num_worlds)
         self.steps, _ = zeros(num_worlds, int)
         self.resets, _ = zeros(num_worlds, int)
+        self.track_id, self.track_id_t = zeros(num_worlds, int)  # index into tracks
 
         self.rgb_out_t = None
         self.pixels_t = None
@@ -156,7 +175,11 @@ class CarEnv:
             self.rgb_hwc_t = wp.to_torch(self.rgb_out)  # (N, H, W, 3), as rendered
             self.rgb_out_t = self.rgb_hwc_t.permute(0, 3, 1, 2)  # (N, 3, H, W) view
             self.cam_index = cam.id
-            self.pixel_shape = (3, int(self.cam_h) - crop_top(int(self.cam_h)), int(self.cam_w))
+            self.pixel_shape = (
+                3,
+                int(self.cam_h) - crop_top(int(self.cam_h)),
+                int(self.cam_w),
+            )
             self.pixels_t = torch.zeros(
                 (num_worlds, *self.pixel_shape), dtype=torch.uint8, device="cuda"
             )
@@ -173,7 +196,8 @@ class CarEnv:
             dim=self.num_worlds,
             inputs=[
                 self.device_data.qpos,
-                self.track_data,
+                self.bank,
+                self.track_id,
                 self.car,
                 self.params,
                 self.idx,
@@ -220,7 +244,8 @@ class CarEnv:
             inputs=[
                 self.actions,
                 self.device_data.qpos,
-                self.track_data,
+                self.bank,
+                self.track_id,
                 self.car,
                 self.params,
                 self.idx,
@@ -230,7 +255,7 @@ class CarEnv:
                 self.obs,
                 self.reward,
                 self.reward_terms,
-                self.progress,
+                self.laps,
                 self.done,
                 self.truncated,
                 self.final_obs,
@@ -252,6 +277,17 @@ class CarEnv:
         # com_pos + camlight move the cameras and lights with them (without these
         # the camera stays at its initial pose and renders black)
         mjw.kinematics(self.device_model, self.device_data)
+        wp.launch(
+            write_tape,
+            dim=(self.num_worlds, self.num_tape),
+            inputs=[
+                self.bank,
+                self.track_id,
+                self.first_tape,
+                self.device_data.geom_xpos,
+                self.device_data.geom_xmat,
+            ],
+        )
         mjw.com_pos(self.device_model, self.device_data)
         mjw.camlight(self.device_model, self.device_data)
         mjw.refit_bvh(self.device_model, self.device_data, self.rc)

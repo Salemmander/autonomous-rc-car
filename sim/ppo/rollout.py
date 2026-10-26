@@ -37,7 +37,7 @@ class RolloutBuffer:
         time out together. They stay on the GPU as tensors; reading them (.item())
         forces a sync, so the caller only does that when it logs.
         """
-        # [crashes, meters, speed, |offset|, |steer change|, then one per reward term]
+        # [crashes, laps, speed, |offset|, |steer change|, then one per reward term]
         stats = torch.zeros(5 + env.reward_terms_t.shape[1], device="cuda")
 
         with torch.no_grad():
@@ -65,7 +65,7 @@ class RolloutBuffer:
                         torch.stack(
                             [
                                 (done * (1 - truncated)).sum(),  # left the track
-                                env.progress_t.sum(),  # meters along the track
+                                env.laps_t.sum(),  # laps (each world's own track)
                                 obs[:, 3].sum(),  # speed / max_speed
                                 obs[:, 0].abs().sum(),  # |offset|, 1 = on the tape
                                 # |steering change| this step, in [-1, 1] units.
@@ -87,7 +87,7 @@ class RolloutBuffer:
         terms = stats[5:] / samples  # average per step
         return {
             "drive/crashes_per_min": stats[0] / minutes,
-            "drive/laps_per_min": stats[1] / env.track.length / minutes,
+            "drive/laps_per_min": stats[1] / minutes,
             "drive/speed": stats[2] / samples * env.car.max_speed,
             "drive/offset_abs": stats[3] / samples,
             "drive/steer_change": stats[4] / samples,

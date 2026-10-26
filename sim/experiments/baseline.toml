@@ -23,7 +23,8 @@ steer_rate = 0.5 # penalty x (steering change per step)^2, steering in [-1, 1]
 
 [tracks]
 # Random track generator (assets/track_gen.py). Ranges are [min, max].
-# Not used by training yet. Preview with: uv run python show_tracks.py
+# Preview with: uv run python show_tracks.py
+count = 1024              # training tracks; every reset puts the car on a random one
 corners = [6, 16]         # polygon corners the track is rounded from; more = twistier
 radius = [0.5, 4.3]       # m, corner distance from the middle; uneven = hairpins and S-bends
 turn_radius = [0.6, 3.0]  # m, curve radius at each corner; the car's own minimum is ~0.43

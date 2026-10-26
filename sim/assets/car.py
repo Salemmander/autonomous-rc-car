@@ -12,7 +12,7 @@ import math
 import mujoco
 import mujoco.viewer
 
-from assets.track import Track, build_track, oval_centerline
+from assets.track import Track, build_tape_pool, build_track, oval_centerline
 from config import CarConfig, load_config
 
 WHEEL_WIDTH = 0.025  # visual only, not worth a config entry yet
@@ -131,12 +131,16 @@ def build_car(spec: mujoco.MjSpec, cfg: CarConfig) -> None:
 
 
 def build_model(
-    cfg: CarConfig, track: Track | None = None
+    cfg: CarConfig, track: Track | None = None, tape_pool: int = 0
 ) -> tuple[mujoco.MjSpec, mujoco.MjModel]:
+    """track: tape drawn for that one track. tape_pool: that many movable tape
+    boxes instead, for the GPU env, where every world can be on a different track."""
     spec = mujoco.MjSpec()
     build_scene(spec)
     if track is not None:
         build_track(spec, track)
+    if tape_pool:
+        build_tape_pool(spec, tape_pool)
     build_car(spec, cfg)
     return spec, spec.compile()
 

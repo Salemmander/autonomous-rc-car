@@ -4,8 +4,12 @@ The car runs in the same GPU env used for training (1 world), with the run's
 reward settings, so observations, rewards, and resets match training exactly.
 Each step its pose is copied into a CPU MuJoCo scene for display.
 
+Drives one track: by default test track 0, from a set the policy never trained on.
+
 Run from sim/:
-    uv run python view.py                   # latest run in runs/
+    uv run python view.py                   # latest run in runs/, test track 0
+    uv run python view.py --test 3          # test track 3
+    uv run python view.py --track 3         # training track 3 (as in show_tracks.py)
     uv run python view.py runs/<run>        # a specific run
     uv run python view.py --stochastic      # with exploration noise, like training
     uv run python view.py --car-view        # see what the car's camera sees
@@ -22,6 +26,9 @@ import mujoco.viewer
 import torch
 import warp as wp
 
+from assets.car import build_model
+from assets.track_gen import generate_track
+from config import load_config
 from env.car_env import CarEnv
 from experiment import load_experiment
 from model.agent import PilotNetActor
@@ -48,16 +55,29 @@ parser.add_argument(
 )
 parser.add_argument("--checkpoint", help="file in the run folder, e.g. actor_iter0100.pt")
 parser.add_argument("--seed", type=int, default=0)
+which = parser.add_mutually_exclusive_group()
+which.add_argument("--test", type=int, help="held-out test track number (default 0)")
+which.add_argument("--track", type=int, help="training track number")
 args = parser.parse_args()
 
 run = args.run or max(RUNS_DIR.iterdir(), key=lambda p: p.stat().st_mtime)
 cfg = load_experiment(run / "config.toml")
 print(f"viewing {run}")
 
+# Tracks come from the run's [tracks] settings and seed, so training track N is
+# the same one the run trained on
+if args.track is not None:
+    track = generate_track(cfg.seed, args.track, cfg.tracks)
+    print(f"training track {args.track}")
+else:
+    track = generate_track(cfg.seed, args.test or 0, cfg.tracks, test=True)
+    print(f"test track {args.test or 0} (never trained on)")
+
 env = CarEnv(
     num_worlds=1,
     seed=args.seed,
     render=True,  # the actor drives from the camera
+    tracks=[track],
     reward=cfg.reward,
     episode_steps=cfg.env.episode_steps,
 )
@@ -75,12 +95,14 @@ print(f"loading {actor_file.name}")
 actor.load_state_dict(torch.load(actor_file, map_location="cuda"))
 actor.eval()
 
-model = env.model
+# The env's model has movable tape for the GPU; the viewer gets the track drawn in.
+# Same car, joints, and cameras, so the GPU qpos copies straight over
+_, model = build_model(load_config(), track)
 data = mujoco.MjData(model)
 
 start = env.reset()
 obs, pixels = start.obs, start.pixels
-distance = 0.0  # meters along the track this episode
+laps = 0.0  # this episode
 episodes = crashes = 0
 
 with mujoco.viewer.launch_passive(model, data) as viewer:
@@ -102,7 +124,7 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         terms = env.reward_terms_t[0].tolist()
         done = out.done.item() > 0
         crashed = done and out.truncated.item() == 0
-        distance += env.progress_t[0].item()
+        laps += env.laps_t[0].item()
 
         # Show the GPU world's pose (already reset to a new start if done)
         data.qpos[:] = env.device_data.qpos.numpy()[0]
@@ -116,7 +138,7 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
                 "steer\nthrottle\nspeed\noffset\nlaps\nepisodes\ncrashes\n"
                 "reward\n  progress\n  off track\n  center\n  steer rate",
                 f"{steer:+.2f}\n{throttle:+.2f}\n{obs[0, 3].item() * env.car.max_speed:.2f} m/s\n"
-                f"{obs[0, 0].item():+.2f}\n{distance / env.track.length:.2f}\n"
+                f"{obs[0, 0].item():+.2f}\n{laps:.2f}\n"
                 f"{episodes}\n{crashes}\n{reward:+.3f}\n"
                 + "\n".join(f"{t:+.3f}" for t in terms),
             )
@@ -128,9 +150,9 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
             crashes += crashed
             print(
                 f"episode {episodes}: {'CRASHED' if crashed else 'timeout'} after "
-                f"{distance / env.track.length:.2f} laps"
+                f"{laps:.2f} laps"
             )
-            distance = 0.0
+            laps = 0.0
 
         # Real time: one policy step every control period
         time.sleep(max(0.0, env.car.dt - (time.perf_counter() - tick)))

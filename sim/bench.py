@@ -1,6 +1,6 @@
 """Measure env throughput: world-steps per second, with and without rendering.
 
-Run from sim/: uv run python bench.py --num-worlds 4096 [--render]
+Run from sim/: uv run python bench.py --num-worlds 4096 [--render] [--oval]
 """
 
 import argparse
@@ -8,15 +8,20 @@ import time
 
 import torch
 
+from assets.track_gen import generate_tracks
 from env.car_env import CarEnv
+from experiment import load_experiment
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-worlds", type=int, default=4096)
 parser.add_argument("--steps", type=int, default=200)
 parser.add_argument("--render", action="store_true")
+parser.add_argument("--oval", action="store_true", help="the oval instead of random tracks")
 args = parser.parse_args()
 
-env = CarEnv(num_worlds=args.num_worlds, render=args.render)
+exp = load_experiment()
+tracks = None if args.oval else generate_tracks(exp.seed, exp.tracks)
+env = CarEnv(num_worlds=args.num_worlds, render=args.render, tracks=tracks)
 env.reset()
 actions = torch.rand(args.num_worlds, env.action_dim, device="cuda") * 2 - 1
 

@@ -28,6 +28,7 @@ import warp as wp
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
 
+from assets.track_gen import generate_tracks
 from env.car_env import CarEnv
 from experiment import load_experiment, to_toml
 from model.agent import Critic, PilotNetActor
@@ -67,10 +68,12 @@ writer = SummaryWriter(run_dir)
 print(f"run: {run_dir}\n{to_toml(cfg)}")
 
 torch.manual_seed(cfg.seed)
+print(f"generating {cfg.tracks.count} tracks...")
 env = CarEnv(
     num_worlds=cfg.env.num_worlds,
     seed=cfg.seed,
     render=True,  # the actor drives from the camera
+    tracks=generate_tracks(cfg.seed, cfg.tracks),
     reward=cfg.reward,
     episode_steps=cfg.env.episode_steps,
 )

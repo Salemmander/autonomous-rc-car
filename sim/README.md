@@ -26,6 +26,9 @@ Each training run creates `runs/<name>_<date>_<time>/` with:
 - `actor.pt`: the policy at the end of training (`view.py --last`)
 - TensorBoard curves
 
+`view.py` drives held-out test track 0 by default, a track the policy never trained on.
+`--test N` picks another test track, `--track N` a training track.
+
 `view.py runs/<run>` watches a specific run, and `--stochastic` adds the exploration
 noise used during training.
 
@@ -78,7 +81,7 @@ After that it's just a knob.
 
 | Metric | Meaning |
 | --- | --- |
-| `drive/laps_per_min` | how fast it gets around the track |
+| `drive/laps_per_min` | how fast it gets around its tracks (each lap counted on its own track's length) |
 | `drive/crashes_per_min` | how often it leaves the track |
 | `drive/speed` | average speed (max is 1.5 m/s) |
 | `drive/offset_abs` | average distance from the center line, 1 = on the tape |
@@ -90,19 +93,29 @@ These are rates, not per-episode numbers, so they're meaningful for every rollou
 
 ## Random tracks
 
-`assets/track_gen.py` makes random closed tracks: a random polygon with every corner
-rounded into an arc, so they have straights, S-bends, and hairpins, but no curve
-tighter than the car can drive. Its knobs are `[tracks]` in `baseline.toml` (not
-used by training yet). Track N for a seed is always the same track.
+Training uses `[tracks] count` random tracks (1024), generated at startup from the
+experiment's seed. Every reset puts the car on a random one. A separate set of
+**test tracks** is never trained on; `view.py` drives those by default.
+
+`assets/track_gen.py` makes them: a random polygon with every corner rounded into
+an arc, so they have straights, S-bends, and hairpins, but no curve tighter than the
+car can drive. Its knobs are `[tracks]` in `baseline.toml`. Track N for a seed is
+always the same track.
+
+How 1024 worlds show different tracks with one MuJoCo model: the model has one shared
+set of tape boxes, and `env/kernels.py write_tape` moves each world's copy of them
+onto that world's track before rendering (the renderer reads per-world geom poses).
 
 ```bash
 uv run python show_tracks.py                                # tracks 0-15, top-down -> tracks.png
 uv run python show_tracks.py --first 16                     # the next 16
+uv run python show_tracks.py --test                          # the test tracks
 uv run python show_tracks.py --set 'tracks.corners=[8,20]'  # try a setting
 uv run python drive.py --track 3                            # drive track 3 yourself
+uv run python drive.py --test 3                             # or test track 3
 ```
 
 ## Other scripts
 
-- `drive.py`: drive the car yourself with an Xbox controller (`--track N` for a random track)
+- `drive.py`: drive the car yourself with an Xbox controller (`--track N` / `--test N` for a random track, default the oval)
 - `bench.py`: env steps per second, with and without camera rendering
