@@ -12,7 +12,7 @@ the Pi (`env/preprocess.py`: crop the top 30%, RGB). The critic sees sim-only st
 
 ```bash
 uv run python train.py                            # experiments/baseline.toml
-uv run python train.py experiments/center.toml    # an experiment
+uv run python train.py experiments/smoother.toml  # an experiment (your own file)
 uv run python view.py                             # watch the latest run drive
 uv run tensorboard --logdir runs                  # compare runs in the browser
 ```
@@ -33,15 +33,15 @@ only place defaults live. An experiment file is applied on top of it and only li
 what it changes:
 
 ```toml
-# experiments/center.toml
+# experiments/smoother.toml (example)
 [reward]
-center = 0.5
+steer_rate = 1.0
 ```
 
 To try a value without making a file:
 
 ```bash
-uv run python train.py experiments/center.toml --set reward.center=1.0 ppo.lr=3e-4 name=center_strong
+uv run python train.py --set reward.steer_rate=1.0 ppo.lr=1e-4 name=smoother_slow_lr
 ```
 
 Misspelled keys and wrong types are errors, so a typo can't silently do nothing.

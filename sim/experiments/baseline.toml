@@ -1,15 +1,15 @@
 # The baseline: every knob and its value. This file is the only place defaults live.
 #
 # Training with no experiment file uses this. Other experiment files are applied on
-# top of it and only list what they change, e.g. experiments/center.toml:
+# top of it and only list what they change, e.g. experiments/smoother.toml:
 #     [reward]
-#     center = 0.5
+#     steer_rate = 1.0
 
 name = "baseline" # run folders are named <name>_<date>_<time>
 seed = 42
 
 [env]
-num_worlds = 1024  # cars in parallel; their camera frames fill GPU memory
+num_worlds = 1024   # cars in parallel; their camera frames fill GPU memory
 episode_steps = 600 # time limit per episode: 600 = 30 s at 20 Hz
 
 [reward]
@@ -18,19 +18,19 @@ episode_steps = 600 # time limit per episode: 600 = 30 s at 20 Hz
 # weight here, a field in experiment.py RewardConfig, and its formula in the kernel.
 progress = 1.0   # x distance driven along the track; full speed earns ~1 per step
 off_track = 5.0  # penalty once, when the car crosses the tape (episode ends)
-center = 0.0     # penalty x offset^2 per step, offset in [-1, 1] (1 = on the tape)
-steer_rate = 0.0 # penalty x (steering change per step)^2, steering in [-1, 1]
+center = 0.5     # penalty x offset^2 per step, offset in [-1, 1] (1 = on the tape)
+steer_rate = 0.5 # penalty x (steering change per step)^2, steering in [-1, 1]
 
 [ppo]
-iterations = 300       # each one = collect a rollout, then update
-rollout_steps = 32     # steps per world per rollout (32 = 1.6 s of driving)
-lr = 3e-4  # decays linearly to 0 over the run
-minibatch_size = 4096  # samples per gradient step; bigger runs out of GPU memory (10 GB)
-update_epochs = 4      # passes over each rollout
-hidden_dim = 128  # critic width (the actor is PilotNet, fixed size)
-gamma = 0.99           # discount: 0.99 = cares ~100 steps (5 s) ahead
+iterations = 300      # each one = collect a rollout, then update
+rollout_steps = 32    # steps per world per rollout (32 = 1.6 s of driving)
+lr = 3e-4             # decays linearly to 0 over the run
+minibatch_size = 4096 # samples per gradient step; bigger runs out of GPU memory (10 GB)
+update_epochs = 2     # passes over each rollout; 2 is ~1.7x faster per iteration than 4 and gets to a good policy sooner
+hidden_dim = 128      # critic width (the actor is PilotNet, fixed size)
+gamma = 0.99          # discount: 0.99 = cares ~100 steps (5 s) ahead
 gae_lambda = 0.95
-reward_scale = 0.1     # rewards are multiplied by this before training
-entropy_weight = 0.01  # higher = keeps exploring longer
-clip_epsilon = 0.2     # how far one update can move the policy
+reward_scale = 0.1    # rewards are multiplied by this before training
+entropy_weight = 0.01 # higher = keeps exploring longer
+clip_epsilon = 0.2    # how far one update can move the policy
 max_grad_norm = 0.5

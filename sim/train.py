@@ -5,8 +5,8 @@ during training (asymmetric actor-critic). Only the actor goes on the car.
 
 Run from sim/:
     uv run python train.py                                  # experiments/baseline.toml
-    uv run python train.py experiments/center.toml          # an experiment
-    uv run python train.py experiments/center.toml --set reward.center=1.0 ppo.lr=3e-4
+    uv run python train.py experiments/smoother.toml        # an experiment (your own file)
+    uv run python train.py --set reward.steer_rate=1.0 ppo.lr=1e-4 name=smoother_slow_lr
 
 Every knob and its baseline value is in experiments/baseline.toml; other
 experiment files only list what they change. Each run gets a folder in runs/

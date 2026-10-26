@@ -1,4 +1,0 @@
-# Smooth steering: penalize changing the wheel angle quickly. Real servos and
-# camera latency make jerky policies oscillate on the real car.
-[reward]
-steer_rate = 0.5

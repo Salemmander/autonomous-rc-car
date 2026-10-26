@@ -1,4 +1,0 @@
-# Stay near the middle of the track instead of hugging the inside of turns.
-# center penalty per step = weight x offset^2 (offset 1 = on the tape).
-[reward]
-center = 0.5
