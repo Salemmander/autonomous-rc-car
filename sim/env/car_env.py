@@ -88,7 +88,10 @@ class CarEnv:
         tracks: list[Track] | None = None,
         reward: RewardConfig | None = None,
         episode_steps: int | None = None,
+        evaluate: bool = False,
     ):
+        """evaluate: world i always drives tracks[i % len(tracks)] from the same
+        clean start (see EnvParams.evaluate). For eval.py and view.py."""
         # Torch and Warp share one stream so they never race each other. It's a
         # torch-made (non-blocking) stream: PyTorch can't record CUDA graphs on
         # Warp's default stream, which is a blocking one
@@ -129,6 +132,7 @@ class CarEnv:
             episode_steps = episode_steps or baseline.env.episode_steps
         self.params = EnvParams()
         self.params.episode_steps = episode_steps
+        self.params.evaluate = int(evaluate)
         self.params.w_progress = reward.progress
         self.params.w_off_track = reward.off_track
         self.params.w_center = reward.center

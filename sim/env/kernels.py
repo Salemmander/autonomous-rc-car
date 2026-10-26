@@ -63,6 +63,10 @@ class EnvParams:
     needs no recompile, unlike wp.constant."""
 
     episode_steps: int
+    # 1 = evaluation: world i always drives track i (mod the number of tracks),
+    # starting at its first point, centered and straight, and all worlds start the
+    # time limit together. Same start every time, so results are repeatable
+    evaluate: int
     w_progress: float
     w_off_track: float
     w_center: float
@@ -147,6 +151,7 @@ def reset_world(
     steer: wp.array1d[float],
     steps: wp.array1d[int],
     resets: wp.array1d[int],
+    params: EnvParams,
     seed: int,
     num_worlds: int,
 ):
@@ -154,18 +159,24 @@ def reset_world(
     rng = wp.rand_init(seed, resets[i] * num_worlds + i)
 
     # Random track, random point on it, a bit off center, roughly facing along it
-    t = wp.randi(rng, 0, bank.n.shape[0])
-    track_id[i] = t
+    num_tracks = bank.n.shape[0]
+    t = wp.randi(rng, 0, num_tracks)
+    if params.evaluate != 0:
+        t = i % num_tracks
     j = wp.randi(rng, 0, bank.n[t])
-    tan = bank.tangents[t, j]
     offset = wp.randf(rng, -START_OFFSET_FRAC, START_OFFSET_FRAC) * bank.half_width[t]
-    p = bank.centerline[t, j] + bank.normals[t, j] * offset
+    yaw_noise = wp.randf(rng, -START_YAW_NOISE, START_YAW_NOISE)
+    if params.evaluate != 0:
+        j = 0
+        offset = 0.0
+        yaw_noise = 0.0
 
+    track_id[i] = t
+    tan = bank.tangents[t, j]
+    p = bank.centerline[t, j] + bank.normals[t, j] * offset
     qpos[i, X] = p[0]
     qpos[i, Y] = p[1]
-    qpos[i, YAW] = wp.atan2(tan[1], tan[0]) + wp.randf(
-        rng, -START_YAW_NOISE, START_YAW_NOISE
-    )
+    qpos[i, YAW] = wp.atan2(tan[1], tan[0]) + yaw_noise
     qpos[i, STEER_L] = 0.0
     qpos[i, STEER_R] = 0.0
 
@@ -290,6 +301,7 @@ def step(
             steer,
             steps,
             resets,
+            params,
             seed,
             num_worlds,
         )
@@ -329,12 +341,14 @@ def reset_all(
         steer,
         steps,
         resets,
+        params,
         seed,
         num_worlds,
     )
     # Start each world at a random point in its time limit. Otherwise all worlds
     # time out on the same step forever, and training sees bursts of resets
-    steps[i] = wp.randi(wp.rand_init(seed + 1, i), 0, params.episode_steps)
+    if params.evaluate == 0:
+        steps[i] = wp.randi(wp.rand_init(seed + 1, i), 0, params.episode_steps)
     write_obs(i, qpos, bank, track_id, car, idx, speed, steer, obs)
     reward[i] = 0.0
     done[i] = 0.0

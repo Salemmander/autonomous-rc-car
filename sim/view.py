@@ -5,11 +5,13 @@ reward settings, so observations, rewards, and resets match training exactly.
 Each step its pose is copied into a CPU MuJoCo scene for display.
 
 Drives one track: by default test track 0, from a set the policy never trained on.
+Each episode starts from the same spot eval.py uses, so its crashes replay here.
 
 Run from sim/:
     uv run python view.py                   # latest run in runs/, test track 0
     uv run python view.py --test 3          # test track 3
     uv run python view.py --track 3         # training track 3 (as in show_tracks.py)
+    uv run python view.py --random-start    # random start points, like training
     uv run python view.py runs/<run>        # a specific run
     uv run python view.py --stochastic      # with exploration noise, like training
     uv run python view.py --car-view        # see what the car's camera sees
@@ -19,7 +21,6 @@ Run from sim/:
 
 import argparse
 import time
-from pathlib import Path
 
 import mujoco
 import mujoco.viewer
@@ -28,16 +29,16 @@ import warp as wp
 
 from assets.car import build_model
 from assets.track_gen import generate_track
+from checkpoints import add_args, resolve
 from config import load_config
 from env.car_env import CarEnv
 from experiment import load_experiment
 from model.agent import PilotNetActor
 
 wp.config.log_level = wp.LOG_WARNING
-RUNS_DIR = Path(__file__).parent / "runs"
 
 parser = argparse.ArgumentParser()
-parser.add_argument("run", type=Path, nargs="?", help="run folder (default: latest)")
+add_args(parser)
 parser.add_argument(
     "--stochastic",
     action="store_true",
@@ -48,19 +49,19 @@ parser.add_argument(
     action="store_true",
     help="start on the car's own camera (front) instead of the chase camera",
 )
-parser.add_argument(
-    "--last",
-    action="store_true",
-    help="load actor.pt (end of training) instead of the best checkpoint",
-)
-parser.add_argument("--checkpoint", help="file in the run folder, e.g. actor_iter0100.pt")
 parser.add_argument("--seed", type=int, default=0)
+parser.add_argument(
+    "--random-start",
+    action="store_true",
+    help="start each episode somewhere random, like training, instead of the same "
+    "start eval.py uses",
+)
 which = parser.add_mutually_exclusive_group()
 which.add_argument("--test", type=int, help="held-out test track number (default 0)")
 which.add_argument("--track", type=int, help="training track number")
 args = parser.parse_args()
 
-run = args.run or max(RUNS_DIR.iterdir(), key=lambda p: p.stat().st_mtime)
+run, actor_file = resolve(args)
 cfg = load_experiment(run / "config.toml")
 print(f"viewing {run}")
 
@@ -80,17 +81,11 @@ env = CarEnv(
     tracks=[track],
     reward=cfg.reward,
     episode_steps=cfg.env.episode_steps,
+    # Same start as eval.py, so a crash it reports replays here exactly
+    evaluate=not args.random_start,
 )
 assert env.pixel_shape is not None
 actor = PilotNetActor(env.pixel_shape, env.action_dim).cuda()
-# Default: the best checkpoint (actor_iterNNNN_best.pt), else the final actor.pt
-best = sorted(run.glob("actor_iter*_best.pt"))
-if args.checkpoint:
-    actor_file = run / args.checkpoint
-elif best and not args.last:
-    actor_file = best[-1]
-else:
-    actor_file = run / "actor.pt"
 print(f"loading {actor_file.name}")
 actor.load_state_dict(torch.load(actor_file, map_location="cuda"))
 actor.eval()

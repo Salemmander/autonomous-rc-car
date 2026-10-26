@@ -14,6 +14,7 @@ the Pi (`env/preprocess.py`: crop the top 30%, RGB). The critic sees sim-only st
 uv run python train.py                            # experiments/baseline.toml
 uv run python train.py experiments/smoother.toml  # an experiment (your own file)
 uv run python view.py                             # watch the latest run drive
+uv run python eval.py                             # score it on 256 tracks it never trained on
 uv run tensorboard --logdir runs                  # compare runs in the browser
 ```
 
@@ -26,8 +27,14 @@ Each training run creates `runs/<name>_<date>_<time>/` with:
 - `actor.pt`: the policy at the end of training (`view.py --last`)
 - TensorBoard curves
 
+`eval.py` is the real score: every test track at once, one 30 s episode each from a
+fixed start, with the mean action (no exploration noise, like on the car). It reports
+the share finished without crashing, laps/min, speed, and offset, and lists crashes by
+track. `--train` scores training tracks instead, to compare.
+
 `view.py` drives held-out test track 0 by default, a track the policy never trained on.
-`--test N` picks another test track, `--track N` a training track.
+`--test N` picks another test track, `--track N` a training track. It starts from the
+same spot as `eval.py`, so a crash it lists replays exactly (`--random-start` to vary it).
 
 `view.py runs/<run>` watches a specific run, and `--stochastic` adds the exploration
 noise used during training.
