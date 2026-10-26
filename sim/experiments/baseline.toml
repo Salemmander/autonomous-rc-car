@@ -24,10 +24,12 @@ steer_rate = 0.5 # penalty x (steering change per step)^2, steering in [-1, 1]
 [randomize]
 # Every episode gets a slightly different car, so the policy works on the real one
 # even though most of config/car.toml is guesses. Ranges are [min, max] multipliers
-# of the car.toml value; eval.py and view.py use the car.toml car exactly (1.0).
-latency = [0.5, 2.0]        # x control.latency_s: camera frame -> wheels (25-100 ms)
-steer_response = [0.5, 2.0] # x steering.response_time_s: how fast the servo turns
-speed_response = [0.5, 2.0] # x throttle.response_time_s: how fast it speeds up/slows down
+# of the car.toml value; [1.0, 1.0] = always exactly that value. eval.py and view.py
+# use the car.toml car exactly. Until the car is measured, only latency (the biggest
+# unknown), top speed, steering angle, and trim vary.
+latency = [0.8, 1.5]        # x control.latency_s: camera frame -> wheels (40-75 ms)
+steer_response = [1.0, 1.0] # x steering.response_time_s: how fast the servo turns
+speed_response = [1.0, 1.0] # x throttle.response_time_s: how fast it speeds up/slows down
 max_speed = [0.8, 1.2]      # x throttle.max_speed: top speed at full throttle
 max_steer = [0.85, 1.15]    # x steering.max_angle_deg: wheel angle at full lock
 steer_trim = 0.05           # servo center off by up to +-this (1 = full lock), so
