@@ -1,4 +1,4 @@
-# pyright: reportIndexIssue=false, reportArgumentType=false, reportGeneralTypeIssues=false, reportAssignmentType=false
+# pyright: reportIndexIssue=false, reportArgumentType=false, reportGeneralTypeIssues=false, reportAssignmentType=false, reportOperatorIssue=false, reportAttributeAccessIssue=false
 # Warp's array indexing and @wp.struct types (used as annotations below) aren't
 # understood by pyright, so those checks are off for this file only.
 """Warp kernels for the car env: one thread per world.
@@ -13,7 +13,7 @@ new random one every reset.
 
 import warp as wp
 
-from assets.track import HIDDEN_Z, TAPE_HEIGHT
+from assets.track import HIDDEN_Z, TAPE_HEIGHT, TAPE_OVERLAP, TAPE_SPACING, TAPE_WIDTH
 
 SUBSTEPS = wp.constant(4)  # integrate the bicycle model in smaller steps for accuracy
 SEARCH_WINDOW = wp.constant(10)  # +-points to search around last step's nearest point
@@ -76,8 +76,9 @@ class EnvParams:
     # starting at its first point, centered and straight, and all worlds start the
     # time limit together. Same every time, so results are repeatable
     evaluate: int
-    # 1 = the car.toml car exactly, 0 = randomized every episode (randomize ranges)
-    nominal_car: int
+    # 1 = the car.toml car and the default look exactly, 0 = randomized every
+    # episode ([randomize] and [visuals] ranges)
+    nominal: int
     w_progress: float
     w_off_track: float
     w_center: float
@@ -89,6 +90,18 @@ class EnvParams:
     r_max_speed: wp.vec2
     r_max_steer: wp.vec2
     r_steer_trim: float  # +- this, in steering units
+    # Visual randomization ranges (VisualsConfig)
+    v_floor_brightness: wp.vec2
+    v_floor_saturation: float
+    v_floor_scale: wp.vec2
+    v_tape_width: wp.vec2
+    v_tape_white: float
+    v_camera_height: float
+    v_camera_pitch: float  # rad
+    v_exposure: wp.vec2
+    v_contrast: wp.vec2
+    v_white_balance: float
+    v_noise: float
 
 
 @wp.struct
@@ -111,6 +124,13 @@ class Worlds:
     max_speed: wp.array1d[float]
     max_steer: wp.array1d[float]
     steer_trim: wp.array1d[float]
+    # This episode's look (randomize_look); the rest of it lives in the model's
+    # per-world arrays (floor texture and color, tape color, camera pose)
+    tape_width: wp.array1d[float]
+    exposure: wp.array1d[float]
+    contrast: wp.array1d[float]
+    color_gain: wp.array1d[wp.vec3]  # white balance
+    noise: wp.array1d[float]
 
 
 @wp.func
@@ -227,7 +247,7 @@ def reset_world(
         j = 0
         offset = 0.0
         yaw_noise = 0.0
-    if params.nominal_car != 0:
+    if params.nominal != 0:
         latency = 1.0
         steer_time = 1.0
         speed_time = 1.0
@@ -416,6 +436,7 @@ def write_tape(
     first_geom: int,
     geom_xpos: wp.array2d[wp.vec3],
     geom_xmat: wp.array2d[wp.mat33],
+    geom_size: wp.array2d[wp.vec3],
 ):
     """Move world i's tape boxes onto its track: one thread per (world, box).
 
@@ -424,7 +445,7 @@ def write_tape(
     gives every world different tape. Boxes the track doesn't need stay under the
     floor. Kinematics never moves world-fixed geoms, so this survives until the
     next call; it runs every step anyway since it's cheap and resets happen
-    inside the step kernel.
+    inside the step kernel. geom_size is per world too, for the tape width.
     """
     i, k = wp.tid()
     t = w.track_id[i]
@@ -435,5 +456,183 @@ def write_tape(
         s = wp.sin(pose[2])
         geom_xpos[i, g] = wp.vec3(pose[0], pose[1], TAPE_HEIGHT)
         geom_xmat[i, g] = wp.mat33(c, -s, 0.0, s, c, 0.0, 0.0, 0.0, 1.0)
+        geom_size[i, g] = wp.vec3(
+            TAPE_SPACING * TAPE_OVERLAP * 0.5, w.tape_width[i] * 0.5, TAPE_HEIGHT
+        )
     else:
         geom_xpos[i, g] = wp.vec3(0.0, 0.0, HIDDEN_Z)
+
+
+@wp.func
+def hue_color(h: float) -> wp.vec3:
+    """A fully saturated color around the color wheel, h in [0, 1)."""
+    two_pi = 6.2831853
+    return wp.vec3(
+        0.5 + 0.5 * wp.cos(two_pi * h),
+        0.5 + 0.5 * wp.cos(two_pi * (h - 0.3333)),
+        0.5 + 0.5 * wp.cos(two_pi * (h - 0.6667)),
+    )
+
+
+@wp.func
+def luminance(c: wp.vec3) -> float:
+    return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
+
+
+@wp.func
+def mul_quat_wxyz(a: wp.quat, b: wp.quat) -> wp.quat:
+    """MuJoCo-order (w, x, y, z) quaternion product. mujoco_warp stores cam_quat
+    in MuJoCo order, not Warp's (x, y, z, w), so wp's own * doesn't apply."""
+    return wp.quat(
+        a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3],
+        a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2],
+        a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1],
+        a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0],
+    )
+
+
+@wp.struct
+class LookIds:
+    """Where the randomized parts of the look are in the model."""
+
+    floor_mat: int
+    tape_mat: int
+    num_floor_tex: int  # texture ids 0..num_floor_tex-1 are floors, 0 = the default
+    texrepeat: wp.vec2  # floor pattern scale, default
+    tape_rgba: wp.vec4  # default
+    cam: int  # the car's camera
+    cam_pos: wp.vec3  # default
+    cam_quat: wp.quat  # default, MuJoCo (w, x, y, z) order
+
+
+@wp.kernel
+def randomize_look(
+    params: EnvParams,
+    w: Worlds,
+    ids: LookIds,
+    done: wp.array1d[float],
+    only_done: int,
+    seed: int,
+    num_worlds: int,
+    mat_texid: wp.array3d[int],
+    mat_rgba: wp.array2d[wp.vec4],
+    mat_texrepeat: wp.array2d[wp.vec2],
+    cam_pos: wp.array2d[wp.vec3],
+    cam_quat: wp.array2d[wp.quat],
+):
+    """A new random look for each world starting an episode: floor texture, color,
+    and scale, tape color and width, camera pose, and image settings for
+    postprocess. Writes the model's per-world arrays, which the renderer reads
+    (like write_tape does with geom poses)."""
+    i = wp.tid()
+    if only_done != 0 and done[i] == 0.0:
+        return
+    rng = wp.rand_init(seed + 2, w.resets[i] * num_worlds + i)
+
+    floor_tex = wp.randi(rng, 0, ids.num_floor_tex)
+    # Floor: a random shade, tinted toward a random hue
+    brightness = wp.randf(
+        rng, params.v_floor_brightness[0], params.v_floor_brightness[1]
+    )
+    sat = wp.randf(rng, 0.0, params.v_floor_saturation)
+    floor_color = brightness * (
+        (1.0 - sat) * wp.vec3(1.0, 1.0, 1.0) + sat * hue_color(wp.randf(rng))
+    )
+    floor_scale = wp.randf(rng, params.v_floor_scale[0], params.v_floor_scale[1])
+
+    # Tape: white some of the time, otherwise any color
+    if wp.randf(rng) < params.v_tape_white:
+        tape_color = wp.randf(rng, 0.8, 1.0) * wp.vec3(1.0, 1.0, 1.0)
+    else:
+        sat = wp.randf(rng, 0.4, 1.0)
+        tape_color = wp.randf(rng, 0.2, 1.0) * (
+            (1.0 - sat) * wp.vec3(1.0, 1.0, 1.0) + sat * hue_color(wp.randf(rng))
+        )
+    # Keep the tape visible: if it's about as bright as the floor (textures average
+    # ~0.6), make it white on a dark floor or black on a light one
+    floor_lum = 0.6 * luminance(floor_color)
+    if wp.abs(luminance(tape_color) - floor_lum) < 0.2:
+        if floor_lum < 0.5:
+            tape_color = wp.vec3(0.95, 0.95, 0.95)
+        else:
+            tape_color = wp.vec3(0.08, 0.08, 0.08)
+    tape_width = wp.randf(rng, params.v_tape_width[0], params.v_tape_width[1])
+
+    dz = wp.randf(rng, -params.v_camera_height, params.v_camera_height)
+    pitch = wp.randf(rng, -params.v_camera_pitch, params.v_camera_pitch)
+
+    exposure = wp.randf(rng, params.v_exposure[0], params.v_exposure[1])
+    contrast = wp.randf(rng, params.v_contrast[0], params.v_contrast[1])
+    wb = params.v_white_balance
+    gain = wp.vec3(
+        1.0 + wp.randf(rng, -wb, wb),
+        1.0 + wp.randf(rng, -wb, wb),
+        1.0 + wp.randf(rng, -wb, wb),
+    )
+    noise = wp.randf(rng, 0.0, params.v_noise)
+
+    tape_rgba = wp.vec4(tape_color[0], tape_color[1], tape_color[2], 1.0)
+    if params.nominal != 0:
+        floor_tex = 0
+        floor_color = wp.vec3(1.0, 1.0, 1.0)
+        floor_scale = 1.0
+        tape_rgba = ids.tape_rgba
+        tape_width = TAPE_WIDTH
+        dz = 0.0
+        pitch = 0.0
+        exposure = 1.0
+        contrast = 1.0
+        gain = wp.vec3(1.0, 1.0, 1.0)
+        noise = 0.0
+
+    mat_texid[i, ids.floor_mat, 1] = floor_tex  # 1 = the RGB texture role
+    mat_rgba[i, ids.floor_mat] = wp.vec4(
+        floor_color[0], floor_color[1], floor_color[2], 1.0
+    )
+    mat_texrepeat[i, ids.floor_mat] = ids.texrepeat / floor_scale
+    mat_rgba[i, ids.tape_mat] = tape_rgba
+    w.tape_width[i] = tape_width
+
+    # Camera mount: a little higher or lower, tilted a little more or less. The
+    # rotation is about the camera's own x axis (image right), which is pitch
+    cam_pos[i, ids.cam] = ids.cam_pos + wp.vec3(0.0, 0.0, dz)
+    tilt = wp.quat(wp.cos(pitch * 0.5), wp.sin(pitch * 0.5), 0.0, 0.0)
+    cam_quat[i, ids.cam] = mul_quat_wxyz(ids.cam_quat, tilt)
+
+    w.exposure[i] = exposure
+    w.contrast[i] = contrast
+    w.color_gain[i] = gain
+    w.noise[i] = noise
+
+
+@wp.kernel
+def postprocess(
+    rgb: wp.array3d[wp.vec3],
+    w: Worlds,
+    crop: int,
+    seed: int,
+    pixels: wp.array4d[wp.uint8],
+):
+    """Rendered frame -> what the actor sees, one thread per output pixel.
+
+    The part the Pi does too (env/preprocess.py): crop the top rows, scale to
+    0..255 uint8, channels first. Training only: this world's exposure, contrast,
+    white balance, and per-frame sensor noise. With the default look these are
+    all off, and the output is exactly the plain crop.
+    """
+    i, y, x = wp.tid()
+    c = rgb[i, y + crop, x]
+    gain = w.color_gain[i] * w.exposure[i]
+    contrast = w.contrast[i]
+    noise = w.noise[i]
+    rng = wp.rand_init(
+        seed + 3 + w.steps[i] * 7919 + w.resets[i] * 104729,
+        (i * pixels.shape[2] + y) * pixels.shape[3] + x,
+    )
+    for ch in range(3):
+        v = c[ch] * gain[ch]
+        if contrast != 1.0:
+            v = (v - 0.5) * contrast + 0.5
+        if noise > 0.0:
+            v += noise * wp.randn(rng)
+        pixels[i, ch, y, x] = wp.uint8(wp.clamp(wp.round(v * 255.0), 0.0, 255.0))

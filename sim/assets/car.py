@@ -12,6 +12,7 @@ import math
 import mujoco
 import mujoco.viewer
 
+from assets.textures import floor_textures
 from assets.track import Track, build_tape_pool, build_track, oval_centerline
 from config import CarConfig, load_config
 
@@ -35,6 +36,19 @@ def build_scene(spec: mujoco.MjSpec) -> None:
     )
     floor_mat = spec.add_material(name="floor", texrepeat=[10, 10])
     floor_mat.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = "grid"
+    # More floors for visual randomization: the GPU env swaps the floor material's
+    # texture per world (env/kernels.py randomize_look)
+    for name, rgb in floor_textures():
+        tex = spec.add_texture(
+            name=f"floor_{name}",
+            type=mujoco.mjtTexture.mjTEXTURE_2D,
+            width=rgb.shape[1],
+            height=rgb.shape[0],
+            nchannel=3,
+        )
+        tex.data = rgb.tobytes()
+    # Tape color comes from this material, so it can be changed per world too
+    spec.add_material(name="tape", rgba=[0.95, 0.95, 0.95, 1])
 
     world = spec.worldbody
     world.add_light(

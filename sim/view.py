@@ -82,6 +82,7 @@ env = CarEnv(
     reward=cfg.reward,
     episode_steps=cfg.env.episode_steps,
     randomize=cfg.randomize,
+    visuals=cfg.visuals,
     # Same start as eval.py, so a crash it reports replays here exactly
     evaluate=not args.random_start,
 )

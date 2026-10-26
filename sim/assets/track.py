@@ -133,7 +133,7 @@ def _add_tape_box(spec: mujoco.MjSpec, name: str, pos, yaw: float) -> None:
         pos=pos,
         size=[TAPE_SPACING * TAPE_OVERLAP / 2, TAPE_WIDTH / 2, TAPE_HEIGHT],
         euler=[0, 0, yaw],
-        rgba=[0.95, 0.95, 0.95, 1],
+        material="tape",  # assets/car.py build_scene
     )
 
 

@@ -5,6 +5,10 @@ different images on the car than in training.
 Frames are kept as uint8 (0..255) to save GPU memory in the rollout buffer; the
 actor divides by 255.
 
+The env does this in a Warp kernel (env/kernels.py postprocess), which also adds
+the training-only image randomization. `preprocess` below is the plain version,
+what the Pi does; with the default look the kernel's output matches it exactly.
+
 Note: the supervised PilotNet (src/training, scripts/export_onnx.py) uses YCbCr.
 This RL policy uses plain RGB, so its ONNX export (later) must crop only, with no
 color conversion.
@@ -20,19 +24,9 @@ def crop_top(height: int) -> int:
     return int(height * CROP_TOP_FRAC)
 
 
-def _crop_to_uint8(rgb_hwc: torch.Tensor) -> torch.Tensor:
-    """(N, H, W, 3) float RGB in [0, 1] -> (N, 3, H - crop, W) uint8 RGB."""
-    x = rgb_hwc[:, crop_top(rgb_hwc.shape[1]) :, :, :] * 255.0
-    return x.round().clamp(0, 255).to(torch.uint8).permute(0, 3, 1, 2)
-
-
-# Compiled into one fused GPU kernel instead of several separate passes over
-# all 1024 frames
-_crop_to_uint8_fused = torch.compile(_crop_to_uint8)
-
-
 def preprocess(rgb_hwc: torch.Tensor, out: torch.Tensor) -> None:
     """rgb_hwc: (N, H, W, 3) float in [0, 1], the renderer's own memory layout.
     out: (N, 3, H - crop_top(H), W) uint8 RGB, written in place.
     """
-    out.copy_(_crop_to_uint8_fused(rgb_hwc))
+    x = rgb_hwc[:, crop_top(rgb_hwc.shape[1]) :, :, :] * 255.0
+    out.copy_(x.round().clamp(0, 255).to(torch.uint8).permute(0, 3, 1, 2))

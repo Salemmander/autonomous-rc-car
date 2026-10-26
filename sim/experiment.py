@@ -39,6 +39,23 @@ class RandomizeConfig:
 
 
 @dataclass
+class VisualsConfig:
+    """Ranges are [min, max]; single numbers are +- or a probability."""
+
+    floor_brightness: list[float]
+    floor_saturation: float
+    floor_scale: list[float]
+    tape_width: list[float]
+    tape_white: float
+    camera_height: float
+    camera_pitch_deg: float
+    exposure: list[float]
+    contrast: list[float]
+    white_balance: float
+    noise: float
+
+
+@dataclass
 class EnvConfig:
     num_worlds: int
     episode_steps: int
@@ -68,6 +85,7 @@ class ExperimentConfig:
     env: EnvConfig
     reward: RewardConfig
     randomize: RandomizeConfig
+    visuals: VisualsConfig
     tracks: TrackGenConfig
     ppo: PPOConfig
 
@@ -76,6 +94,7 @@ SECTIONS = {
     "env": EnvConfig,
     "reward": RewardConfig,
     "randomize": RandomizeConfig,
+    "visuals": VisualsConfig,
     "tracks": TrackGenConfig,
     "ppo": PPOConfig,
 }

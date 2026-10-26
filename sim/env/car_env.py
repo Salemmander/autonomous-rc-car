@@ -5,7 +5,8 @@ Actions are [steer, throttle] in [-1, 1].
 
 Two kinds of observation:
 - pixels (render=True): the car's camera, preprocessed exactly like on the Pi
-  (env/preprocess.py). This is all the actor sees.
+  (env/preprocess.py). This is all the actor sees. In training, the look is
+  randomized every episode ([visuals]: floor, tape, camera, exposure, noise).
 - obs: sim-only state (env/kernels.py:write_obs). Only the critic sees it, during
   training; the real car never has it.
 """
@@ -26,14 +27,17 @@ from env.kernels import (
     OBS_DIM,
     CarParams,
     EnvParams,
+    LookIds,
     TrackBank,
     Worlds,
+    postprocess,
+    randomize_look,
     reset_all,
     step,
     write_tape,
 )
-from env.preprocess import crop_top, preprocess
-from experiment import RandomizeConfig, RewardConfig, load_experiment
+from env.preprocess import crop_top
+from experiment import RandomizeConfig, RewardConfig, VisualsConfig, load_experiment
 
 
 @dataclass
@@ -81,6 +85,17 @@ def make_track_bank(tracks: list[Track]) -> tuple[TrackBank, int]:  # pyright: i
     return bank, max(len(p) for p in tapes)
 
 
+# Parts of the model that randomize_look and write_tape change per world
+PER_WORLD_MODEL_FIELDS = (
+    "mat_texid",  # floor texture
+    "mat_rgba",  # floor and tape color
+    "mat_texrepeat",  # floor pattern scale
+    "geom_size",  # tape width
+    "cam_pos",  # camera height
+    "cam_quat",  # camera tilt
+)
+
+
 class CarEnv:
     def __init__(
         self,
@@ -91,13 +106,15 @@ class CarEnv:
         reward: RewardConfig | None = None,
         episode_steps: int | None = None,
         randomize: RandomizeConfig | None = None,
+        visuals: VisualsConfig | None = None,
         evaluate: bool = False,
-        nominal_car: bool | None = None,
+        nominal: bool | None = None,
     ):
         """evaluate: world i always drives tracks[i % len(tracks)] from the same
         clean start (see EnvParams.evaluate). For eval.py and view.py.
-        nominal_car: the car.toml car exactly instead of randomizing it every
-        episode. Default: on when evaluating, off when training."""
+        nominal: the car.toml car and the default look exactly, instead of
+        randomizing them every episode. Default: on when evaluating, off when
+        training."""
         # Torch and Warp share one stream so they never race each other. It's a
         # torch-made (non-blocking) stream: PyTorch can't record CUDA graphs on
         # Warp's default stream, which is a blocking one
@@ -124,6 +141,12 @@ class CarEnv:
         self.first_tape = self.model.geom("tape_0").id
         self.device_model = mjw.put_model(self.model)
         self.device_data = mjw.make_data(self.model, nworld=num_worlds)
+        # Model arrays that differ per world (the look, randomize_look). The
+        # renderer reads row (world % rows), so one row means "shared by all"
+        for name in PER_WORLD_MODEL_FIELDS:
+            shared = getattr(self.device_model, name)
+            per_world = np.repeat(shared.numpy()[:1], num_worlds, axis=0)
+            setattr(self.device_model, name, wp.array(per_world, dtype=shared.dtype))
 
         self.car = CarParams()
         self.car.wheelbase = cfg.geometry.wheelbase
@@ -135,15 +158,17 @@ class CarEnv:
         self.car.speed_time = cfg.throttle.response_time_s
 
         # Anything not given comes from experiments/baseline.toml
-        if reward is None or episode_steps is None or randomize is None:
+        if None in (reward, episode_steps, randomize, visuals):
             baseline = load_experiment()
             reward = reward or baseline.reward
             episode_steps = episode_steps or baseline.env.episode_steps
             randomize = randomize or baseline.randomize
+            visuals = visuals or baseline.visuals
+        assert reward and episode_steps and randomize and visuals
         self.params = EnvParams()
         self.params.episode_steps = episode_steps
         self.params.evaluate = int(evaluate)
-        self.params.nominal_car = int(evaluate if nominal_car is None else nominal_car)
+        self.params.nominal = int(evaluate if nominal is None else nominal)
         self.params.w_progress = reward.progress
         self.params.w_off_track = reward.off_track
         self.params.w_center = reward.center
@@ -154,6 +179,17 @@ class CarEnv:
         self.params.r_max_speed = wp.vec2(*randomize.max_speed)
         self.params.r_max_steer = wp.vec2(*randomize.max_steer)
         self.params.r_steer_trim = randomize.steer_trim
+        self.params.v_floor_brightness = wp.vec2(*visuals.floor_brightness)
+        self.params.v_floor_saturation = visuals.floor_saturation
+        self.params.v_floor_scale = wp.vec2(*visuals.floor_scale)
+        self.params.v_tape_width = wp.vec2(*visuals.tape_width)
+        self.params.v_tape_white = visuals.tape_white
+        self.params.v_camera_height = visuals.camera_height
+        self.params.v_camera_pitch = np.radians(visuals.camera_pitch_deg)
+        self.params.v_exposure = wp.vec2(*visuals.exposure)
+        self.params.v_contrast = wp.vec2(*visuals.contrast)
+        self.params.v_white_balance = visuals.white_balance
+        self.params.v_noise = visuals.noise
 
         def zeros(shape, dtype=float):
             arr = wp.zeros(shape, dtype=dtype)
@@ -175,10 +211,27 @@ class CarEnv:
             setattr(self.worlds, name, wp.zeros(num_worlds, dtype=int))
         for name in (
             "s_prev", "speed", "steer", "latency", "steer_time", "speed_time",
-            "max_speed", "max_steer", "steer_trim",
+            "max_speed", "max_steer", "steer_trim", "tape_width", "exposure",
+            "contrast", "noise",
         ):  # fmt: skip
             setattr(self.worlds, name, wp.zeros(num_worlds, dtype=float))
         self.worlds.commands = wp.zeros((num_worlds, HISTORY), dtype=wp.vec2)
+        self.worlds.color_gain = wp.zeros(num_worlds, dtype=wp.vec3)
+
+        # Where the randomized look goes in the model
+        m = self.model
+        floor_mat = m.material("floor").id
+        tape_mat = m.material("tape").id
+        cam_id = m.camera("front").id
+        self.look_ids = LookIds()
+        self.look_ids.floor_mat = floor_mat
+        self.look_ids.tape_mat = tape_mat
+        self.look_ids.num_floor_tex = m.ntex  # every texture is a floor; 0 = default
+        self.look_ids.texrepeat = wp.vec2(*m.mat_texrepeat[floor_mat])
+        self.look_ids.tape_rgba = wp.vec4(*m.mat_rgba[tape_mat])
+        self.look_ids.cam = cam_id
+        self.look_ids.cam_pos = wp.vec3(*m.cam_pos[cam_id])
+        self.look_ids.cam_quat = wp.quat(*m.cam_quat[cam_id])
         self.track_id_t = wp.to_torch(self.worlds.track_id)
 
         self.rgb_out_t = None
@@ -204,9 +257,8 @@ class CarEnv:
                 int(self.cam_h) - crop_top(int(self.cam_h)),
                 int(self.cam_w),
             )
-            self.pixels_t = torch.zeros(
-                (num_worlds, *self.pixel_shape), dtype=torch.uint8, device="cuda"
-            )
+            self.pixels = wp.zeros((num_worlds, *self.pixel_shape), dtype=wp.uint8)
+            self.pixels_t = wp.to_torch(self.pixels)
 
         # Record one step into a CUDA graph, then replay it every step
         self._step_ops()
@@ -233,8 +285,8 @@ class CarEnv:
             ],
         )
         if self.render:
+            self._randomize_look(only_done=False)
             self._render()
-            self._preprocess()
         return ResetOutput(obs=self.obs_t, rgb=self.rgb_out_t, pixels=self.pixels_t)
 
     def step(self, actions: torch.Tensor) -> StepOutput:
@@ -243,8 +295,6 @@ class CarEnv:
             wp.capture_launch(self.graph)  # pyright: ignore[reportArgumentType]
         else:
             self._step_ops()
-        if self.render:
-            self._preprocess()
         return StepOutput(
             obs=self.obs_t,
             rgb=self.rgb_out_t,
@@ -278,11 +328,29 @@ class CarEnv:
             ],
         )
         if self.render:
+            self._randomize_look(only_done=True)  # worlds that just reset
             self._render()
 
-    def _preprocess(self):
-        assert self.pixels_t is not None
-        preprocess(self.rgb_hwc_t, self.pixels_t)
+    def _randomize_look(self, only_done: bool):
+        m = self.device_model
+        wp.launch(
+            randomize_look,
+            dim=self.num_worlds,
+            inputs=[
+                self.params,
+                self.worlds,
+                self.look_ids,
+                self.done,
+                int(only_done),
+                self.seed,
+                self.num_worlds,
+                m.mat_texid,
+                m.mat_rgba,
+                m.mat_texrepeat,
+                m.cam_pos,
+                m.cam_quat,
+            ],
+        )
 
     def _render(self):
         # No physics step: kinematics turns qpos into body and geom poses, then
@@ -298,6 +366,7 @@ class CarEnv:
                 self.first_tape,
                 self.device_data.geom_xpos,
                 self.device_data.geom_xmat,
+                self.device_model.geom_size,
             ],
         )
         mjw.com_pos(self.device_model, self.device_data)
@@ -305,3 +374,15 @@ class CarEnv:
         mjw.refit_bvh(self.device_model, self.device_data, self.rc)
         mjw.render(self.device_model, self.device_data, self.rc)
         mjw.get_rgb(self.rc, self.cam_index, self.rgb_out)  # pyright: ignore[reportArgumentType]
+        assert self.pixel_shape is not None
+        wp.launch(
+            postprocess,
+            dim=(self.num_worlds, self.pixel_shape[1], self.pixel_shape[2]),
+            inputs=[
+                self.rgb_out,
+                self.worlds,
+                crop_top(int(self.cam_h)),
+                self.seed,
+                self.pixels,
+            ],
+        )

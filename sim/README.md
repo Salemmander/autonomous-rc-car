@@ -30,8 +30,9 @@ Each training run creates `runs/<name>_<date>_<time>/` with:
 `eval.py` is the real score: every test track at once, one 30 s episode each from a
 fixed start, with the mean action (no exploration noise, like on the car). It reports
 the share finished without crashing, laps/min, speed, and offset, and lists crashes by
-track. `--train` scores training tracks instead, to compare. `--random-car` gives each
-track a randomized car (like training) instead of the `car.toml` car.
+track. `--train` scores training tracks instead, to compare. `--randomize` gives each
+track a random car and look (like training) instead of the `car.toml` car and the
+default look.
 
 `view.py` drives held-out test track 0 by default, a track the policy never trained on.
 `--test N` picks another test track, `--track N` a training track. It starts from the
@@ -139,7 +140,31 @@ servo trim (the car drifts a little when "straight"). The policy has to work acr
 whole range, so it should handle the real car even if the guesses are off. The critic
 sees the episode's car; the actor only sees the camera.
 
-`eval.py` and `view.py` use the `car.toml` car exactly unless `eval.py --random-car`.
+`eval.py` and `view.py` use the `car.toml` car exactly unless `eval.py --randomize`.
+
+## Visual randomization
+
+The camera image is randomized every episode too (`[visuals]` in `baseline.toml`), so
+the policy learns "follow the tape" on any floor, not the sim's gray checker:
+
+- **Floor:** one of 7 textures (`assets/textures.py`: checker, concrete, carpet, planks,
+  tiles, speckle, flat), tinted a random color and scaled. Planks and tiles have lines
+  that aren't tape.
+- **Tape:** white half the time, otherwise any color, 2-5 cm wide. It's always kept
+  brighter or darker than the floor so it stays visible.
+- **Camera mount:** +-1 cm height, +-3 degrees tilt.
+- **Image:** exposure, contrast, white balance, and per-frame sensor noise.
+
+The look lives in the model's per-world arrays (floor texture and color, tape color and
+width, camera pose), set by `env/kernels.py randomize_look` at each reset; the image
+settings are applied in `postprocess`. With the default look, `postprocess` is exactly
+the Pi's crop (`env/preprocess.py`).
+
+```bash
+uv run python show_views.py             # 24 random looks as the policy sees them -> views.png
+uv run python show_views.py --default   # the default look
+uv run python show_views.py --set visuals.noise=0.1   # try a setting
+```
 
 ## Other scripts
 

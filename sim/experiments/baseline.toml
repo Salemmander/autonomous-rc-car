@@ -35,6 +35,23 @@ max_steer = [0.85, 1.15]    # x steering.max_angle_deg: wheel angle at full lock
 steer_trim = 0.05           # servo center off by up to +-this (1 = full lock), so
                             # "straight" drifts a little to one side
 
+[visuals]
+# The camera image is randomized every episode too, so the policy learns to follow
+# tape on floors, tape, lighting, and cameras that don't look like the sim's default.
+# eval.py and view.py use the default look (gray checker, white tape) unless
+# --randomize. Preview: uv run python show_views.py
+floor_brightness = [0.4, 1.3] # x the floor texture (7 kinds, assets/textures.py)
+floor_saturation = 0.4        # how colorful the floor can be (0 = gray, 1 = vivid)
+floor_scale = [0.5, 2.0]      # x the floor pattern size
+tape_width = [0.02, 0.05]     # m (default 0.03)
+tape_white = 0.5              # chance the tape is white; otherwise a random color
+camera_height = 0.01          # m, +- the car.toml camera height
+camera_pitch_deg = 3.0        # +- the car.toml camera tilt
+exposure = [0.6, 1.4]         # image brightness
+contrast = [0.7, 1.3]
+white_balance = 0.15          # +- per color channel, so colors shift a little
+noise = 0.04                  # sensor noise: up to this std per pixel (1 = full range), new every frame
+
 [tracks]
 # Random track generator (assets/track_gen.py). Ranges are [min, max].
 # Preview with: uv run python show_tracks.py
