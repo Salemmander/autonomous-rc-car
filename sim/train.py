@@ -76,6 +76,7 @@ env = CarEnv(
     tracks=generate_tracks(cfg.seed, cfg.tracks),
     reward=cfg.reward,
     episode_steps=cfg.env.episode_steps,
+    randomize=cfg.randomize,
 )
 assert env.pixel_shape is not None
 actor = PilotNetActor(env.pixel_shape, env.action_dim).cuda()

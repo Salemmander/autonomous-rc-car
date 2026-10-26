@@ -9,6 +9,7 @@ Run from sim/:
     uv run python eval.py                    # latest run, best checkpoint, 256 test tracks
     uv run python eval.py runs/<run> --tracks 1024
     uv run python eval.py --train            # its training tracks instead (for comparison)
+    uv run python eval.py --random-car       # a randomized car per track, like training
     uv run python eval.py --last             # actor.pt / --checkpoint actor_iter0100.pt
 """
 
@@ -31,6 +32,11 @@ parser.add_argument("--tracks", type=int, default=256, help="how many tracks")
 parser.add_argument(
     "--train", action="store_true", help="use the run's training tracks instead"
 )
+parser.add_argument(
+    "--random-car",
+    action="store_true",
+    help="randomize the car per track ([randomize] ranges) instead of the car.toml car",
+)
 args = parser.parse_args()
 
 run, actor_file = resolve(args)
@@ -48,7 +54,9 @@ env = CarEnv(
     tracks=tracks,
     reward=cfg.reward,
     episode_steps=cfg.env.episode_steps,
+    randomize=cfg.randomize,
     evaluate=True,  # world i drives track i from its fixed start
+    nominal_car=not args.random_car,
 )
 assert env.pixel_shape is not None
 actor = PilotNetActor(env.pixel_shape, env.action_dim).cuda()
@@ -90,7 +98,8 @@ finished = int((crash_step < 0).sum())
 minutes = (steps_alive.sum() * env.car.dt / 60).clamp(min=1e-9)
 
 print(f"\n{run.name} / {actor_file.name}")
-print(f"{n} {kind} tracks, one {seconds:.0f} s episode each, mean action (no noise)\n")
+car = "randomized car" if args.random_car else "car.toml car"
+print(f"{n} {kind} tracks, {car}, one {seconds:.0f} s episode each, mean action (no noise)\n")
 print(f"  finished without crashing  {finished}/{n} ({100 * finished / n:.1f}%)")
 print(f"  laps/min                   {(laps.sum() / minutes).item():.2f}")
 print(

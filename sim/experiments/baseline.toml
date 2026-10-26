@@ -21,6 +21,18 @@ off_track = 5.0  # penalty once, when the car crosses the tape (episode ends)
 center = 0.5     # penalty x offset^2 per step, offset in [-1, 1] (1 = on the tape)
 steer_rate = 0.5 # penalty x (steering change per step)^2, steering in [-1, 1]
 
+[randomize]
+# Every episode gets a slightly different car, so the policy works on the real one
+# even though most of config/car.toml is guesses. Ranges are [min, max] multipliers
+# of the car.toml value; eval.py and view.py use the car.toml car exactly (1.0).
+latency = [0.5, 2.0]        # x control.latency_s: camera frame -> wheels (25-100 ms)
+steer_response = [0.5, 2.0] # x steering.response_time_s: how fast the servo turns
+speed_response = [0.5, 2.0] # x throttle.response_time_s: how fast it speeds up/slows down
+max_speed = [0.8, 1.2]      # x throttle.max_speed: top speed at full throttle
+max_steer = [0.85, 1.15]    # x steering.max_angle_deg: wheel angle at full lock
+steer_trim = 0.05           # servo center off by up to +-this (1 = full lock), so
+                            # "straight" drifts a little to one side
+
 [tracks]
 # Random track generator (assets/track_gen.py). Ranges are [min, max].
 # Preview with: uv run python show_tracks.py

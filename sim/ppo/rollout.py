@@ -1,5 +1,7 @@
 import torch
 
+from env.kernels import CMD_STEER
+
 
 class RolloutBuffer:
     """T steps x W worlds of experience, all on the GPU. Shapes are (T, W, ...).
@@ -8,7 +10,9 @@ class RolloutBuffer:
     float, which is what limits how many worlds fit on the GPU.
     """
 
-    def __init__(self, rollout_steps, num_worlds, obs_dim, action_dim, pixel_shape) -> None:
+    def __init__(
+        self, rollout_steps, num_worlds, obs_dim, action_dim, pixel_shape
+    ) -> None:
         T, W = rollout_steps, num_worlds
         self.rollout_steps = T
         self.num_worlds = W
@@ -17,7 +21,9 @@ class RolloutBuffer:
             return torch.zeros(shape, device="cuda")
 
         self.obs = zeros(T, W, obs_dim)  # sim state, for the critic
-        self.pixels = torch.zeros((T, W, *pixel_shape), dtype=torch.uint8, device="cuda")
+        self.pixels = torch.zeros(
+            (T, W, *pixel_shape), dtype=torch.uint8, device="cuda"
+        )
         self.actions = zeros(T, W, action_dim)
         self.log_probs = zeros(T, W)
         self.values = zeros(T, W)
@@ -68,12 +74,16 @@ class RolloutBuffer:
                                 env.laps_t.sum(),  # laps (each world's own track)
                                 obs[:, 3].sum(),  # speed / max_speed
                                 obs[:, 0].abs().sum(),  # |offset|, 1 = on the tape
-                                # |steering change| this step, in [-1, 1] units.
+                                # |steering command change| this step, in [-1, 1]
+                                # units (obs[:, CMD_STEER], env/kernels.py).
                                 # `obs` is the env's output tensor, already
                                 # overwritten by this step, so "before" comes from
                                 # the buffer copy. Skipped on resets (steering -> 0)
                                 (
-                                    (out.obs[:, 4] - self.obs[step, :, 4]).abs()
+                                    (
+                                        out.obs[:, CMD_STEER]
+                                        - self.obs[step, :, CMD_STEER]
+                                    ).abs()
                                     * (1 - done)
                                 ).sum(),
                             ]

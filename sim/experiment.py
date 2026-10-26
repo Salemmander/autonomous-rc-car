@@ -27,6 +27,18 @@ class RewardConfig:
 
 
 @dataclass
+class RandomizeConfig:
+    """Ranges are [min, max] multipliers of the config/car.toml value."""
+
+    latency: list[float]
+    steer_response: list[float]
+    speed_response: list[float]
+    max_speed: list[float]
+    max_steer: list[float]
+    steer_trim: float
+
+
+@dataclass
 class EnvConfig:
     num_worlds: int
     episode_steps: int
@@ -55,6 +67,7 @@ class ExperimentConfig:
     seed: int
     env: EnvConfig
     reward: RewardConfig
+    randomize: RandomizeConfig
     tracks: TrackGenConfig
     ppo: PPOConfig
 
@@ -62,6 +75,7 @@ class ExperimentConfig:
 SECTIONS = {
     "env": EnvConfig,
     "reward": RewardConfig,
+    "randomize": RandomizeConfig,
     "tracks": TrackGenConfig,
     "ppo": PPOConfig,
 }

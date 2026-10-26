@@ -21,17 +21,19 @@ from assets.car import build_model
 from assets.track import Track, oval_centerline, tape_poses
 from config import load_config
 from env.kernels import (
+    HISTORY,
     NUM_REWARD_TERMS,
     OBS_DIM,
     CarParams,
     EnvParams,
     TrackBank,
+    Worlds,
     reset_all,
     step,
     write_tape,
 )
 from env.preprocess import crop_top, preprocess
-from experiment import RewardConfig, load_experiment
+from experiment import RandomizeConfig, RewardConfig, load_experiment
 
 
 @dataclass
@@ -88,10 +90,14 @@ class CarEnv:
         tracks: list[Track] | None = None,
         reward: RewardConfig | None = None,
         episode_steps: int | None = None,
+        randomize: RandomizeConfig | None = None,
         evaluate: bool = False,
+        nominal_car: bool | None = None,
     ):
         """evaluate: world i always drives tracks[i % len(tracks)] from the same
-        clean start (see EnvParams.evaluate). For eval.py and view.py."""
+        clean start (see EnvParams.evaluate). For eval.py and view.py.
+        nominal_car: the car.toml car exactly instead of randomizing it every
+        episode. Default: on when evaluating, off when training."""
         # Torch and Warp share one stream so they never race each other. It's a
         # torch-made (non-blocking) stream: PyTorch can't record CUDA graphs on
         # Warp's default stream, which is a blocking one
@@ -124,19 +130,30 @@ class CarEnv:
         self.car.max_steer = cfg.steering.max_angle
         self.car.max_speed = cfg.throttle.max_speed
         self.car.dt = cfg.control.dt
+        self.car.latency = cfg.control.latency_s
+        self.car.steer_time = cfg.steering.response_time_s
+        self.car.speed_time = cfg.throttle.response_time_s
 
         # Anything not given comes from experiments/baseline.toml
-        if reward is None or episode_steps is None:
+        if reward is None or episode_steps is None or randomize is None:
             baseline = load_experiment()
             reward = reward or baseline.reward
             episode_steps = episode_steps or baseline.env.episode_steps
+            randomize = randomize or baseline.randomize
         self.params = EnvParams()
         self.params.episode_steps = episode_steps
         self.params.evaluate = int(evaluate)
+        self.params.nominal_car = int(evaluate if nominal_car is None else nominal_car)
         self.params.w_progress = reward.progress
         self.params.w_off_track = reward.off_track
         self.params.w_center = reward.center
         self.params.w_steer_rate = reward.steer_rate
+        self.params.r_latency = wp.vec2(*randomize.latency)
+        self.params.r_steer_time = wp.vec2(*randomize.steer_response)
+        self.params.r_speed_time = wp.vec2(*randomize.speed_response)
+        self.params.r_max_speed = wp.vec2(*randomize.max_speed)
+        self.params.r_max_steer = wp.vec2(*randomize.max_steer)
+        self.params.r_steer_trim = randomize.steer_trim
 
         def zeros(shape, dtype=float):
             arr = wp.zeros(shape, dtype=dtype)
@@ -152,14 +169,17 @@ class CarEnv:
         self.done, self.done_t = zeros(num_worlds)  # 1.0 == done
         self.truncated, self.truncated_t = zeros(num_worlds)
 
-        # Per-world car and track state
-        self.idx, _ = zeros(num_worlds, int)  # nearest centerline point
-        self.s_prev, _ = zeros(num_worlds)  # distance along the track last step
-        self.speed, _ = zeros(num_worlds)
-        self.steer, _ = zeros(num_worlds)
-        self.steps, _ = zeros(num_worlds, int)
-        self.resets, _ = zeros(num_worlds, int)
-        self.track_id, self.track_id_t = zeros(num_worlds, int)  # index into tracks
+        # Per-world car and track state (see Worlds in env/kernels.py)
+        self.worlds = Worlds()
+        for name in ("idx", "steps", "resets", "track_id"):
+            setattr(self.worlds, name, wp.zeros(num_worlds, dtype=int))
+        for name in (
+            "s_prev", "speed", "steer", "latency", "steer_time", "speed_time",
+            "max_speed", "max_steer", "steer_trim",
+        ):  # fmt: skip
+            setattr(self.worlds, name, wp.zeros(num_worlds, dtype=float))
+        self.worlds.commands = wp.zeros((num_worlds, HISTORY), dtype=wp.vec2)
+        self.track_id_t = wp.to_torch(self.worlds.track_id)
 
         self.rgb_out_t = None
         self.pixels_t = None
@@ -201,19 +221,13 @@ class CarEnv:
             inputs=[
                 self.device_data.qpos,
                 self.bank,
-                self.track_id,
                 self.car,
                 self.params,
-                self.idx,
-                self.s_prev,
-                self.speed,
-                self.steer,
+                self.worlds,
                 self.obs,
                 self.reward,
                 self.done,
                 self.truncated,
-                self.steps,
-                self.resets,
                 self.seed,
                 self.num_worlds,
             ],
@@ -249,13 +263,9 @@ class CarEnv:
                 self.actions,
                 self.device_data.qpos,
                 self.bank,
-                self.track_id,
                 self.car,
                 self.params,
-                self.idx,
-                self.s_prev,
-                self.speed,
-                self.steer,
+                self.worlds,
                 self.obs,
                 self.reward,
                 self.reward_terms,
@@ -263,8 +273,6 @@ class CarEnv:
                 self.done,
                 self.truncated,
                 self.final_obs,
-                self.steps,
-                self.resets,
                 self.seed,
                 self.num_worlds,
             ],
@@ -286,7 +294,7 @@ class CarEnv:
             dim=(self.num_worlds, self.num_tape),
             inputs=[
                 self.bank,
-                self.track_id,
+                self.worlds,
                 self.first_tape,
                 self.device_data.geom_xpos,
                 self.device_data.geom_xmat,

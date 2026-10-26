@@ -30,7 +30,8 @@ Each training run creates `runs/<name>_<date>_<time>/` with:
 `eval.py` is the real score: every test track at once, one 30 s episode each from a
 fixed start, with the mean action (no exploration noise, like on the car). It reports
 the share finished without crashing, laps/min, speed, and offset, and lists crashes by
-track. `--train` scores training tracks instead, to compare.
+track. `--train` scores training tracks instead, to compare. `--random-car` gives each
+track a randomized car (like training) instead of the `car.toml` car.
 
 `view.py` drives held-out test track 0 by default, a track the policy never trained on.
 `--test N` picks another test track, `--track N` a training track. It starts from the
@@ -121,6 +122,24 @@ uv run python show_tracks.py --set 'tracks.corners=[8,20]'  # try a setting
 uv run python drive.py --track 3                            # drive track 3 yourself
 uv run python drive.py --test 3                             # or test track 3
 ```
+
+## The car: delay, lag, and randomization
+
+The sim car responds like a real one instead of instantly:
+
+- **Latency:** a command reaches the wheels `control.latency_s` after its camera frame
+  (capture + inference + I2C on the Pi).
+- **Servo and motor lag:** steering and speed approach their targets gradually, with
+  time constants `steering.response_time_s` and `throttle.response_time_s`.
+
+These values in `config/car.toml` are guesses until measured on the car, so `[randomize]`
+in `baseline.toml` gives every episode a slightly different car: latency, servo and motor
+response, top speed, and max steering angle each scaled by a random factor, plus a small
+servo trim (the car drifts a little when "straight"). The policy has to work across the
+whole range, so it should handle the real car even if the guesses are off. The critic
+sees the episode's car; the actor only sees the camera.
+
+`eval.py` and `view.py` use the `car.toml` car exactly unless `eval.py --random-car`.
 
 ## Other scripts
 

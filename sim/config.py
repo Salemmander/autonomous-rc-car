@@ -35,6 +35,7 @@ class SteeringConfig:
     servo_center: int
     servo_right: int
     max_angle_deg: float
+    response_time_s: float  # servo time constant (first-order lag)
 
     @property
     def max_angle(self) -> float:
@@ -45,6 +46,7 @@ class SteeringConfig:
 class ThrottleConfig:
     max_speed: float  # m/s at full PWM
     min_duty: int  # % PWM that first moves the car
+    response_time_s: float  # motor time constant (first-order lag)
 
 
 @dataclass(frozen=True)
