@@ -28,18 +28,17 @@ import warp as wp
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
 
-from assets.track_gen import generate_tracks
-from env.car_env import CarEnv
-from experiment import load_experiment, to_toml
-from model.agent import Critic, PilotNetActor
-from ppo.graph import Graphed
-from ppo.ppo import ppo_update
-from ppo.rollout import RolloutBuffer
+from rcsim.assets.track_gen import generate_tracks
+from rcsim.env.car_env import CarEnv
+from rcsim.experiment import load_experiment, to_toml
+from rcsim.model.agent import Critic, PilotNetActor
+from rcsim.paths import RUNS_DIR
+from rcsim.ppo.graph import Graphed
+from rcsim.ppo.ppo import ppo_update
+from rcsim.ppo.rollout import RolloutBuffer
 
 wp.config.log_level = wp.LOG_WARNING
 torch.backends.cuda.matmul.allow_tf32 = True  # faster matmuls on RTX 30xx
-
-RUNS_DIR = Path(__file__).parent / "runs"
 
 parser = argparse.ArgumentParser(description="Train PPO on the GPU car env")
 parser.add_argument("experiment", type=Path, nargs="?", help="experiments/*.toml")

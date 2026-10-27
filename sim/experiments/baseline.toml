@@ -14,8 +14,8 @@ episode_steps = 600 # time limit per episode: 600 = 30 s at 20 Hz
 
 [reward]
 # Reward per step = sum of these terms, each scaled by its weight. 0 turns a term off.
-# Terms are computed in env/kernels.py (step). To add a new kind of term, add a
-# weight here, a field in experiment.py RewardConfig, and its formula in the kernel.
+# Terms are computed in rcsim/env/kernels.py (step). To add a new kind of term, add a
+# weight here, a field in rcsim/experiment.py RewardConfig, and its formula in the kernel.
 progress = 1.0   # x distance driven along the track; full speed earns ~1 per step
 off_track = 5.0  # penalty once, when the car crosses the tape (episode ends)
 center = 0.5     # penalty x offset^2 per step, offset in [-1, 1] (1 = on the tape)
@@ -39,8 +39,8 @@ steer_trim = 0.05           # servo center off by up to +-this (1 = full lock), 
 # The camera image is randomized every episode too, so the policy learns to follow
 # tape on floors, tape, lighting, and cameras that don't look like the sim's default.
 # eval.py and view.py use the default look (gray checker, white tape) unless
-# --randomize. Preview: uv run python show_views.py
-floor_brightness = [0.4, 1.3] # x the floor texture (7 kinds, assets/textures.py)
+# --randomize. Preview: uv run python tools/show_views.py
+floor_brightness = [0.4, 1.3] # x the floor texture (7 kinds, rcsim/assets/textures.py)
 floor_saturation = 0.4        # how colorful the floor can be (0 = gray, 1 = vivid)
 floor_scale = [0.5, 2.0]      # x the floor pattern size
 tape_width = [0.02, 0.05]     # m (default 0.03)
@@ -61,8 +61,8 @@ light_tint = 0.15             # +- warm (bulb) or cool (daylight), per light
 floor_gloss = [0.0, 0.8]      # floor shine (default 0.5)
 
 [tracks]
-# Random track generator (assets/track_gen.py). Ranges are [min, max].
-# Preview with: uv run python show_tracks.py
+# Random track generator (rcsim/assets/track_gen.py). Ranges are [min, max].
+# Preview with: uv run python tools/show_tracks.py
 count = 1024              # training tracks; every reset puts the car on a random one
 corners = [6, 16]         # polygon corners the track is rounded from; more = twistier
 radius = [0.5, 4.3]       # m, corner distance from the middle; uneven = hairpins and S-bends

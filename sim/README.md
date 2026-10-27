@@ -1,12 +1,30 @@
 # Sim
 
 GPU-parallel MuJoCo Warp sim of the RC car, and PPO to train a driving policy in it.
-See `../docs/sim-rl-plan.md` for the overall plan. Run everything from `sim/`.
+See `../notes/sim-rl-plan.md` for the overall plan. Run everything from `sim/`.
 
 **The policy drives from the camera only.** The actor is PilotNet (same layers as
 `src/training/pilotnet.py`) on the car's 160x120 camera, preprocessed exactly like on
-the Pi (`env/preprocess.py`: crop the top 30%, RGB). The critic sees sim-only state
+the Pi (`rcsim/env/preprocess.py`: crop the top 30%, RGB). The critic sees sim-only state
 (offset, heading, track ahead), but only during training; it never goes on the car.
+
+## Layout
+
+```
+train.py  eval.py  view.py   train a policy, score it, watch it drive
+tools/                       dev tools: show_tracks, show_views, drive (Xbox), bench
+rcsim/                       the library (installed into the venv, so tools/ can import it)
+  env/                         the GPU env: car_env.py (CarEnv), kernels.py (Warp), preprocess.py
+  model/                       the policy and critic networks (agent.py)
+  ppo/                         PPO update, rollout buffer, CUDA graphs
+  assets/                      MuJoCo scene, tracks, track generator, floor textures
+  config.py                    car.toml (shared with the car)
+  experiment.py                experiments/*.toml
+  checkpoints.py  paths.py
+experiments/                 training settings (baseline.toml)
+runs/                        one folder per training run (gitignored)
+out/                         pictures from tools/ (gitignored)
+```
 
 ## Train, watch, compare
 
@@ -80,9 +98,9 @@ Reward per step is a weighted sum of terms (weights in `[reward]`):
 **Adding a new term** (e.g. a target speed) is a code change, made once:
 
 1. add a weight to `[reward]` in `baseline.toml` (0 = off)
-2. add the field to `RewardConfig` in `experiment.py` and `EnvParams` in `env/kernels.py`
+2. add the field to `RewardConfig` in `rcsim/experiment.py` and `EnvParams` in `rcsim/env/kernels.py`
 3. compute it in the `step` kernel, add it to `reward`, and write it to `reward_terms`
-4. copy it into `self.params` in `env/car_env.py`, and log it in `ppo/rollout.py`
+4. copy it into `self.params` in `rcsim/env/car_env.py`, and log it in `rcsim/ppo/rollout.py`
 
 After that it's just a knob.
 
@@ -106,22 +124,22 @@ Training uses `[tracks] count` random tracks (1024), generated at startup from t
 experiment's seed. Every reset puts the car on a random one. A separate set of
 **test tracks** is never trained on; `view.py` drives those by default.
 
-`assets/track_gen.py` makes them: a random polygon with every corner rounded into
+`rcsim/assets/track_gen.py` makes them: a random polygon with every corner rounded into
 an arc, so they have straights, S-bends, and hairpins, but no curve tighter than the
 car can drive. Its knobs are `[tracks]` in `baseline.toml`. Track N for a seed is
 always the same track.
 
 How 1024 worlds show different tracks with one MuJoCo model: the model has one shared
-set of tape boxes, and `env/kernels.py write_tape` moves each world's copy of them
+set of tape boxes, and `rcsim/env/kernels.py write_tape` moves each world's copy of them
 onto that world's track before rendering (the renderer reads per-world geom poses).
 
 ```bash
-uv run python show_tracks.py                                # tracks 0-15, top-down -> tracks.png
-uv run python show_tracks.py --first 16                     # the next 16
-uv run python show_tracks.py --test                          # the test tracks
-uv run python show_tracks.py --set 'tracks.corners=[8,20]'  # try a setting
-uv run python drive.py --track 3                            # drive track 3 yourself
-uv run python drive.py --test 3                             # or test track 3
+uv run python tools/show_tracks.py                                # tracks 0-15, top-down -> out/tracks.png
+uv run python tools/show_tracks.py --first 16                     # the next 16
+uv run python tools/show_tracks.py --test                          # the test tracks
+uv run python tools/show_tracks.py --set 'tracks.corners=[8,20]'  # try a setting
+uv run python tools/drive.py --track 3                            # drive track 3 yourself
+uv run python tools/drive.py --test 3                             # or test track 3
 ```
 
 ## The car: delay, lag, and randomization
@@ -147,7 +165,7 @@ sees the episode's car; the actor only sees the camera.
 The camera image is randomized every episode too (`[visuals]` in `baseline.toml`), so
 the policy learns "follow the tape" on any floor, not the sim's gray checker:
 
-- **Floor:** one of 7 textures (`assets/textures.py`: checker, concrete, carpet, planks,
+- **Floor:** one of 7 textures (`rcsim/assets/textures.py`: checker, concrete, carpet, planks,
   tiles, speckle, flat), tinted a random color and scaled. Planks and tiles have lines
   that aren't tape.
 - **Tape:** white half the time, otherwise any color, 2-5 cm wide. It's always kept
@@ -160,17 +178,17 @@ the policy learns "follow the tape" on any floor, not the sim's gray checker:
 - **Image:** exposure, contrast, white balance, and per-frame sensor noise.
 
 The look lives in the model's per-world arrays (floor texture, color, and shine, tape
-color and width, camera pose, lights), set by `env/kernels.py randomize_look` at each reset; the image
+color and width, camera pose, lights), set by `rcsim/env/kernels.py randomize_look` at each reset; the image
 settings are applied in `postprocess`. With the default look, `postprocess` is exactly
-the Pi's crop (`env/preprocess.py`).
+the Pi's crop (`rcsim/env/preprocess.py`).
 
 ```bash
-uv run python show_views.py             # 24 random looks as the policy sees them -> views.png
-uv run python show_views.py --default   # the default look
-uv run python show_views.py --set visuals.noise=0.1   # try a setting
+uv run python tools/show_views.py             # 24 random looks as the policy sees them -> out/views.png
+uv run python tools/show_views.py --default   # the default look
+uv run python tools/show_views.py --set visuals.noise=0.1   # try a setting
 ```
 
 ## Other scripts
 
-- `drive.py`: drive the car yourself with an Xbox controller (`--track N` / `--test N` for a random track, default the oval)
-- `bench.py`: env steps per second, with and without camera rendering
+- `tools/drive.py`: drive the car yourself with an Xbox controller (`--track N` / `--test N` for a random track, default the oval)
+- `tools/bench.py`: env steps per second, with and without camera rendering

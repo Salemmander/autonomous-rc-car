@@ -1,10 +1,10 @@
 """Procedural floor textures, so the policy sees more than one kind of floor.
 
 All are grayscale and tile seamlessly; the env tints them a random color and scale
-per episode (env/kernels.py randomize_look). The original checker floor
-(assets/car.py build_scene) stays the "nominal" look that eval.py and view.py use.
+per episode (rcsim/env/kernels.py randomize_look). The original checker floor
+(rcsim/assets/car.py build_scene) stays the "nominal" look that eval.py and view.py use.
 
-Preview them: uv run python show_views.py
+Preview them: uv run python tools/show_views.py
 """
 
 import numpy as np

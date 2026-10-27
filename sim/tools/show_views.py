@@ -2,9 +2,9 @@
 look from [visuals] (floor, tape, camera, lighting, exposure, noise), after preprocessing.
 
 Run from sim/:
-    uv run python show_views.py                       # 24 random looks -> views.png
-    uv run python show_views.py --default             # the default look (eval.py, view.py)
-    uv run python show_views.py --set visuals.noise=0.1
+    uv run python tools/show_views.py                       # 24 random looks -> out/views.png
+    uv run python tools/show_views.py --default             # the default look (eval.py, view.py)
+    uv run python tools/show_views.py --set visuals.noise=0.1
 """
 
 import argparse
@@ -15,9 +15,10 @@ import torch
 import warp as wp
 from PIL import Image
 
-from assets.track_gen import generate_track
-from env.car_env import CarEnv
-from experiment import load_experiment
+from rcsim.assets.track_gen import generate_track
+from rcsim.env.car_env import CarEnv
+from rcsim.experiment import load_experiment
+from rcsim.paths import OUT_DIR
 
 wp.config.log_level = wp.LOG_WARNING
 SCALE = 2  # each 160x84 image shown at 2x
@@ -30,7 +31,7 @@ def main():
     parser.add_argument("--count", type=int, default=24)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--default", action="store_true", help="the default look")
-    parser.add_argument("--out", type=Path, default=Path("views.png"))
+    parser.add_argument("--out", type=Path, default=OUT_DIR / "views.png")
     parser.add_argument("--no-open", action="store_true")
     args = parser.parse_args()
 
@@ -62,6 +63,7 @@ def main():
     out = Image.fromarray(sheet).resize(
         (sheet.shape[1] * SCALE, sheet.shape[0] * SCALE), Image.Resampling.NEAREST
     )
+    args.out.parent.mkdir(parents=True, exist_ok=True)
     out.save(args.out)
     print(f"saved {args.out}")
     if not args.no_open:

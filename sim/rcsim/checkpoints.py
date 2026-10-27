@@ -3,11 +3,13 @@
 import argparse
 from pathlib import Path
 
-RUNS_DIR = Path(__file__).parent / "runs"
+from rcsim.paths import RUNS_DIR
 
 
 def add_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("run", type=Path, nargs="?", help="run folder (default: latest)")
+    parser.add_argument(
+        "run", type=Path, nargs="?", help="run folder (default: latest)"
+    )
     parser.add_argument(
         "--last",
         action="store_true",

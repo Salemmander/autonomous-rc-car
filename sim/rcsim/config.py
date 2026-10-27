@@ -9,7 +9,9 @@ import tomllib
 from dataclasses import dataclass, fields
 from pathlib import Path
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "car.toml"
+from rcsim.paths import CAR_CONFIG
+
+CONFIG_PATH = CAR_CONFIG
 
 
 @dataclass(frozen=True)

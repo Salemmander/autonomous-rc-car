@@ -2,9 +2,9 @@
 
 Right trigger = forward, left trigger = reverse, left stick = steer, A = reset.
 Run from sim/:
-    uv run python drive.py            # the oval
-    uv run python drive.py --track 3  # random track 3 (same numbers as show_tracks.py)
-    uv run python drive.py --test 3   # held-out test track 3
+    uv run python tools/drive.py            # the oval
+    uv run python tools/drive.py --track 3  # random track 3 (same numbers as tools/show_tracks.py)
+    uv run python tools/drive.py --test 3   # held-out test track 3
 """
 
 import argparse
@@ -13,15 +13,17 @@ import time
 
 import mujoco
 import mujoco.viewer
-
-from assets.car import build_model
-from assets.track import Track, oval_centerline
-from assets.track_gen import generate_track
-from config import load_config
 from controller import XboxController
-from experiment import load_experiment
 
-parser = argparse.ArgumentParser(description="Drive the sim car with an Xbox controller")
+from rcsim.assets.car import build_model
+from rcsim.assets.track import Track, oval_centerline
+from rcsim.assets.track_gen import generate_track
+from rcsim.config import load_config
+from rcsim.experiment import load_experiment
+
+parser = argparse.ArgumentParser(
+    description="Drive the sim car with an Xbox controller"
+)
 which = parser.add_mutually_exclusive_group()
 which.add_argument("--track", type=int, help="random track number (default: the oval)")
 which.add_argument("--test", type=int, help="held-out test track number")
@@ -75,7 +77,7 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
 
         x, y, yaw = data.qpos[X], data.qpos[Y], data.qpos[YAW]
 
-        # Kinematic bicycle model, same as drive_circle.py
+        # Kinematic bicycle model, same as the env (rcsim/env/kernels.py step)
         data.qpos[X] = x + speed * math.cos(yaw) * DT
         data.qpos[Y] = y + speed * math.sin(yaw) * DT
         data.qpos[YAW] = yaw + speed * math.tan(steer) / L * DT

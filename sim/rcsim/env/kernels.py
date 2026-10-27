@@ -3,7 +3,7 @@
 # understood by pyright, so those checks are off for this file only.
 """Warp kernels for the car env: one thread per world.
 
-Same math as assets/track.py and drive.py (the numpy reference), done for every
+Same math as rcsim/assets/track.py and tools/drive.py (the numpy reference), done for every
 world at once on the GPU. Physics is the kinematic bicycle model written straight
 into qpos; MuJoCo is only used to render.
 
@@ -13,7 +13,13 @@ new random one every reset.
 
 import warp as wp
 
-from assets.track import HIDDEN_Z, TAPE_HEIGHT, TAPE_OVERLAP, TAPE_SPACING, TAPE_WIDTH
+from rcsim.assets.track import (
+    HIDDEN_Z,
+    TAPE_HEIGHT,
+    TAPE_OVERLAP,
+    TAPE_SPACING,
+    TAPE_WIDTH,
+)
 
 SUBSTEPS = wp.constant(4)  # integrate the bicycle model in smaller steps for accuracy
 SEARCH_WINDOW = wp.constant(10)  # +-points to search around last step's nearest point
@@ -48,7 +54,7 @@ class TrackBank:
     n: wp.array1d[int]
     length: wp.array1d[float]
     half_width: wp.array1d[float]
-    # (tracks, tape boxes): x, y, yaw (assets/track.py tape_poses)
+    # (tracks, tape boxes): x, y, yaw (rcsim/assets/track.py tape_poses)
     tape: wp.array2d[wp.vec3]
     n_tape: wp.array1d[int]
 
@@ -68,7 +74,7 @@ class CarParams:
 
 @wp.struct
 class EnvParams:
-    """Runtime knobs from experiment.py. Changing these needs no recompile, unlike
+    """Runtime knobs from rcsim/experiment.py. Changing these needs no recompile, unlike
     wp.constant."""
 
     episode_steps: int
@@ -377,7 +383,7 @@ def step(
     w.steps[i] += 1
     timeout = w.steps[i] >= params.episode_steps
 
-    # Reward = weighted sum of terms (weights from experiment.py RewardConfig)
+    # Reward = weighted sum of terms (weights from rcsim/experiment.py RewardConfig)
     offset_n = offset / half_width  # 0 = middle, +-1 = on the tape
     r_progress = params.w_progress * ds / (car.max_speed * car.dt)  # full speed ~1
     r_center = -params.w_center * offset_n * offset_n
@@ -696,7 +702,7 @@ def postprocess(
 ):
     """Rendered frame -> what the actor sees, one thread per output pixel.
 
-    The part the Pi does too (env/preprocess.py): crop the top rows, scale to
+    The part the Pi does too (rcsim/env/preprocess.py): crop the top rows, scale to
     0..255 uint8, channels first. Training only: this world's exposure, contrast,
     white balance, and per-frame sensor noise. With the default look these are
     all off, and the output is exactly the plain crop.

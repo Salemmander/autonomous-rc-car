@@ -13,9 +13,8 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any
 
-from assets.track_gen import TrackGenConfig
-
-BASELINE = Path(__file__).parent / "experiments" / "baseline.toml"
+from rcsim.assets.track_gen import TrackGenConfig
+from rcsim.paths import BASELINE
 
 
 @dataclass
@@ -168,7 +167,7 @@ def _build(raw: dict) -> ExperimentConfig:
             raise ValueError(f"{BASELINE.name} [{name}] is missing {sorted(missing)}")
         if extra := raw[name].keys() - want:
             raise ValueError(
-                f"[{name}] has {sorted(extra)}, which experiment.py doesn't know. "
+                f"[{name}] has {sorted(extra)}, which rcsim/experiment.py doesn't know. "
                 f"Add a field to {cls.__name__}."
             )
         sections[name] = cls(**raw[name])

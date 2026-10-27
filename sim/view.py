@@ -27,13 +27,13 @@ import mujoco.viewer
 import torch
 import warp as wp
 
-from assets.car import build_model
-from assets.track_gen import generate_track
-from checkpoints import add_args, resolve
-from config import load_config
-from env.car_env import CarEnv
-from experiment import load_experiment
-from model.agent import PilotNetActor
+from rcsim.assets.car import build_model
+from rcsim.assets.track_gen import generate_track
+from rcsim.checkpoints import add_args, resolve
+from rcsim.config import load_config
+from rcsim.env.car_env import CarEnv
+from rcsim.experiment import load_experiment
+from rcsim.model.agent import PilotNetActor
 
 wp.config.log_level = wp.LOG_WARNING
 

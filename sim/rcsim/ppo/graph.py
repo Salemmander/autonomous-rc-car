@@ -22,7 +22,12 @@ class Graphed(Generic[T]):
     - outputs come back in the same tensors every call (read them after replay)
     """
 
-    def __init__(self, fn: Callable[[], T], warmup: int = 3, stream: torch.cuda.Stream | None = None):
+    def __init__(
+        self,
+        fn: Callable[[], T],
+        warmup: int = 3,
+        stream: torch.cuda.Stream | None = None,
+    ):
         self.fn = fn
         self.warmup = warmup
         # Recording happens on a side stream, as PyTorch requires. The env passes

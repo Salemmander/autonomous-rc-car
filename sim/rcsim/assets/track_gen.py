@@ -18,10 +18,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from assets.track import Track, resample_loop
+from rcsim.assets.track import Track, resample_loop
 
 SPACING = 0.05  # m between centerline points, same as the oval
-MAX_EXTENT = 4.5  # m from the middle; the floor is 10 x 10 m (assets/car.py)
+MAX_EXTENT = 4.5  # m from the middle; the floor is 10 x 10 m (rcsim/assets/car.py)
 
 
 @dataclass
@@ -148,7 +148,11 @@ def _try(rng: np.random.Generator, cfg: TrackGenConfig) -> Track | str:
 
 
 def generate_track(
-    seed: int, index: int, cfg: TrackGenConfig, test: bool = False, max_tries: int = 10_000
+    seed: int,
+    index: int,
+    cfg: TrackGenConfig,
+    test: bool = False,
+    max_tries: int = 10_000,
 ) -> Track:
     """Track `index` of the set for `seed`: proposes random tracks until one passes.
 

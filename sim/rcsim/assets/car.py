@@ -4,7 +4,7 @@ The car body's origin is the rear axle center, the same reference the config use
 Poses are written straight into qpos by the kinematic bicycle model, so there are
 no actuators and contacts are off.
 
-Run from sim/: uv run python -m assets.car   (opens the viewer)
+Run from sim/: uv run python -m rcsim.assets.car   (opens the viewer)
 """
 
 import math
@@ -12,9 +12,9 @@ import math
 import mujoco
 import mujoco.viewer
 
-from assets.textures import floor_textures
-from assets.track import Track, build_tape_pool, build_track, oval_centerline
-from config import CarConfig, load_config
+from rcsim.assets.textures import floor_textures
+from rcsim.assets.track import Track, build_tape_pool, build_track, oval_centerline
+from rcsim.config import CarConfig, load_config
 
 WHEEL_WIDTH = 0.025  # visual only, not worth a config entry yet
 LAMPS = 1  # spot lights for visual randomization, off by default. Each one costs
@@ -39,7 +39,7 @@ def build_scene(spec: mujoco.MjSpec) -> None:
     floor_mat = spec.add_material(name="floor", texrepeat=[10, 10])
     floor_mat.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = "grid"
     # More floors for visual randomization: the GPU env swaps the floor material's
-    # texture per world (env/kernels.py randomize_look)
+    # texture per world (rcsim/env/kernels.py randomize_look)
     for name, rgb in floor_textures():
         tex = spec.add_texture(
             name=f"floor_{name}",
@@ -64,7 +64,7 @@ def build_scene(spec: mujoco.MjSpec) -> None:
     )
     # Lamps: spot lights that fade with distance, so they light the floor unevenly
     # (bright pools, gradients, glare on a glossy floor). Off here; the GPU env
-    # turns them on and moves them per world (env/kernels.py randomize_look)
+    # turns them on and moves them per world (rcsim/env/kernels.py randomize_look)
     for k in range(LAMPS):
         world.add_light(
             name=f"lamp_{k}",

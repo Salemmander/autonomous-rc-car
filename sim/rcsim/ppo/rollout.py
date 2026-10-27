@@ -1,6 +1,6 @@
 import torch
 
-from env.kernels import CMD_STEER
+from rcsim.env.kernels import CMD_STEER
 
 
 class RolloutBuffer:
@@ -75,7 +75,7 @@ class RolloutBuffer:
                                 obs[:, 3].sum(),  # speed / max_speed
                                 obs[:, 0].abs().sum(),  # |offset|, 1 = on the tape
                                 # |steering command change| this step, in [-1, 1]
-                                # units (obs[:, CMD_STEER], env/kernels.py).
+                                # units (obs[:, CMD_STEER], rcsim/env/kernels.py).
                                 # `obs` is the env's output tensor, already
                                 # overwritten by this step, so "before" comes from
                                 # the buffer copy. Skipped on resets (steering -> 0)

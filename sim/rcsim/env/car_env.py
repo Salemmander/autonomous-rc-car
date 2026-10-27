@@ -5,9 +5,9 @@ Actions are [steer, throttle] in [-1, 1].
 
 Two kinds of observation:
 - pixels (render=True): the car's camera, preprocessed exactly like on the Pi
-  (env/preprocess.py). This is all the actor sees. In training, the look is
+  (rcsim/env/preprocess.py). This is all the actor sees. In training, the look is
   randomized every episode ([visuals]: floor, tape, camera, lighting, exposure, noise).
-- obs: sim-only state (env/kernels.py:write_obs). Only the critic sees it, during
+- obs: sim-only state (rcsim/env/kernels.py:write_obs). Only the critic sees it, during
   training; the real car never has it.
 """
 
@@ -18,10 +18,10 @@ import numpy as np
 import torch
 import warp as wp
 
-from assets.car import LAMPS, build_model
-from assets.track import Track, oval_centerline, tape_poses
-from config import load_config
-from env.kernels import (
+from rcsim.assets.car import LAMPS, build_model
+from rcsim.assets.track import Track, oval_centerline, tape_poses
+from rcsim.config import load_config
+from rcsim.env.kernels import (
     HISTORY,
     NUM_REWARD_TERMS,
     OBS_DIM,
@@ -36,8 +36,13 @@ from env.kernels import (
     step,
     write_tape,
 )
-from env.preprocess import crop_top
-from experiment import RandomizeConfig, RewardConfig, VisualsConfig, load_experiment
+from rcsim.env.preprocess import crop_top
+from rcsim.experiment import (
+    RandomizeConfig,
+    RewardConfig,
+    VisualsConfig,
+    load_experiment,
+)
 
 
 @dataclass
@@ -136,7 +141,7 @@ class CarEnv:
         self.seed = seed
         self.render = render
         # False when a caller records env.step() into its own CUDA graph (see
-        # ppo/graph.py): a graph can't be launched while another is being recorded
+        # rcsim/ppo/graph.py): a graph can't be launched while another is being recorded
         self.use_graph = True
 
         cfg = load_config()
@@ -213,13 +218,13 @@ class CarEnv:
         self.obs, self.obs_t = zeros((num_worlds, OBS_DIM))
         self.final_obs, self.final_obs_t = zeros((num_worlds, OBS_DIM))
         self.reward, self.reward_t = zeros(num_worlds)
-        # Each reward term separately, for logging (order in env/kernels.py)
+        # Each reward term separately, for logging (order in rcsim/env/kernels.py)
         self.reward_terms, self.reward_terms_t = zeros((num_worlds, NUM_REWARD_TERMS))
         self.laps, self.laps_t = zeros(num_worlds)  # laps driven this step
         self.done, self.done_t = zeros(num_worlds)  # 1.0 == done
         self.truncated, self.truncated_t = zeros(num_worlds)
 
-        # Per-world car and track state (see Worlds in env/kernels.py)
+        # Per-world car and track state (see Worlds in rcsim/env/kernels.py)
         self.worlds = Worlds()
         for name in ("idx", "steps", "resets", "track_id"):
             setattr(self.worlds, name, wp.zeros(num_worlds, dtype=int))

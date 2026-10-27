@@ -1,14 +1,14 @@
 """Preview random tracks from the generator, top-down, as a grid of pictures.
 
 Run from sim/:
-    uv run python show_tracks.py                        # tracks 0-15, [tracks] from baseline.toml
-    uv run python show_tracks.py --first 16 --count 32  # the next ones
-    uv run python show_tracks.py --test                 # the held-out test tracks
-    uv run python show_tracks.py experiments/twisty.toml --set tracks.gap=0.5
+    uv run python tools/show_tracks.py                        # tracks 0-15, [tracks] from baseline.toml
+    uv run python tools/show_tracks.py --first 16 --count 32  # the next ones
+    uv run python tools/show_tracks.py --test                 # the held-out test tracks
+    uv run python tools/show_tracks.py experiments/twisty.toml --set tracks.gap=0.5
 
 Each tile is the 10 x 10 m floor with 1 m grid lines: white = tape, green dot +
 arrow = start and driving direction. Under it: track number, length, width, and
-tightest curve radius. Saves tracks.png and opens it.
+tightest curve radius. Saves out/tracks.png and opens it.
 """
 
 import argparse
@@ -17,9 +17,10 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
-from assets.track import Track
-from assets.track_gen import acceptance, generate_track, turn_radii
-from experiment import load_experiment
+from rcsim.assets.track import Track
+from rcsim.assets.track_gen import acceptance, generate_track, turn_radii
+from rcsim.experiment import load_experiment
+from rcsim.paths import OUT_DIR
 
 TILE = 320  # px
 FLOOR = 10.0  # m shown per tile
@@ -63,7 +64,7 @@ def main():
     parser.add_argument("--first", type=int, default=0, help="first track number")
     parser.add_argument("--count", type=int, default=16)
     parser.add_argument("--seed", type=int, help="default: the experiment's seed")
-    parser.add_argument("--out", type=Path, default=Path("tracks.png"))
+    parser.add_argument("--out", type=Path, default=OUT_DIR / "tracks.png")
     parser.add_argument("--test", action="store_true", help="held-out test tracks")
     parser.add_argument("--no-open", action="store_true")
     args = parser.parse_args()
@@ -82,6 +83,7 @@ def main():
     sheet = Image.new("RGB", (cols * TILE, rows * (TILE + LABEL)), (0, 0, 0))
     for k, tile in enumerate(tiles):
         sheet.paste(tile, ((k % cols) * TILE, (k // cols) * (TILE + LABEL)))
+    args.out.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(args.out)
     print(f"saved {args.out}")
     if not args.no_open:

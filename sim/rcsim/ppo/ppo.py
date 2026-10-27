@@ -29,7 +29,7 @@ def ppo_update(
 
     for _ in range(update_epochs):
         # Random order via argsort of noise: same as randperm, but safe to
-        # record in a CUDA graph (see ppo/graph.py)
+        # record in a CUDA graph (see rcsim/ppo/graph.py)
         indices = torch.rand(batch_size, device="cuda").argsort()
         for start in range(0, batch_size, minibatch_size):
             mb = indices[start : start + minibatch_size]

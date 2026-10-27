@@ -5,7 +5,7 @@ different images on the car than in training.
 Frames are kept as uint8 (0..255) to save GPU memory in the rollout buffer; the
 actor divides by 255.
 
-The env does this in a Warp kernel (env/kernels.py postprocess), which also adds
+The env does this in a Warp kernel (rcsim/env/kernels.py postprocess), which also adds
 the training-only image randomization. `preprocess` below is the plain version,
 what the Pi does; with the default look the kernel's output matches it exactly.
 

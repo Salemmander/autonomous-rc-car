@@ -18,11 +18,11 @@ import argparse
 import torch
 import warp as wp
 
-from assets.track_gen import generate_track
-from checkpoints import add_args, resolve
-from env.car_env import CarEnv
-from experiment import load_experiment
-from model.agent import PilotNetActor
+from rcsim.assets.track_gen import generate_track
+from rcsim.checkpoints import add_args, resolve
+from rcsim.env.car_env import CarEnv
+from rcsim.experiment import load_experiment
+from rcsim.model.agent import PilotNetActor
 
 wp.config.log_level = wp.LOG_WARNING
 
@@ -101,7 +101,9 @@ minutes = (steps_alive.sum() * env.car.dt / 60).clamp(min=1e-9)
 
 print(f"\n{run.name} / {actor_file.name}")
 car = "randomized car and look" if args.randomize else "car.toml car, default look"
-print(f"{n} {kind} tracks, {car}, one {seconds:.0f} s episode each, mean action (no noise)\n")
+print(
+    f"{n} {kind} tracks, {car}, one {seconds:.0f} s episode each, mean action (no noise)\n"
+)
 print(f"  finished without crashing  {finished}/{n} ({100 * finished / n:.1f}%)")
 print(f"  laps/min                   {(laps.sum() / minutes).item():.2f}")
 print(

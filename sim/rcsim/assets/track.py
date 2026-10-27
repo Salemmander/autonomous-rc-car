@@ -4,7 +4,7 @@ The centerline is the single source of truth. The tape visuals, the off-track
 check, and the progress reward are all computed from it.
 
 The numpy math here is the CPU reference, used by the viewer scripts. The GPU env
-(env/kernels.py) does the same math in Warp for every world at once.
+(rcsim/env/kernels.py) does the same math in Warp for every world at once.
 """
 
 import math
@@ -133,7 +133,7 @@ def _add_tape_box(spec: mujoco.MjSpec, name: str, pos, yaw: float) -> None:
         pos=pos,
         size=[TAPE_SPACING * TAPE_OVERLAP / 2, TAPE_WIDTH / 2, TAPE_HEIGHT],
         euler=[0, 0, yaw],
-        material="tape",  # assets/car.py build_scene
+        material="tape",  # rcsim/assets/car.py build_scene
     )
 
 
@@ -145,6 +145,6 @@ def build_track(spec: mujoco.MjSpec, track: Track) -> None:
 
 def build_tape_pool(spec: mujoco.MjSpec, count: int) -> None:
     """`count` tape boxes parked under the floor. The GPU env moves them onto each
-    world's own track (env/kernels.py write_tape)."""
+    world's own track (rcsim/env/kernels.py write_tape)."""
     for k in range(count):
         _add_tape_box(spec, f"tape_{k}", [0, 0, HIDDEN_Z], 0.0)
