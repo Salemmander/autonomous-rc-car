@@ -1,4 +1,4 @@
-# pyright: reportIndexIssue=false, reportArgumentType=false, reportGeneralTypeIssues=false, reportAssignmentType=false, reportOperatorIssue=false, reportAttributeAccessIssue=false
+# pyright: reportIndexIssue=false, reportArgumentType=false, reportGeneralTypeIssues=false, reportAssignmentType=false, reportOperatorIssue=false, reportAttributeAccessIssue=false, reportCallIssue=false
 # Warp's array indexing and @wp.struct types (used as annotations below) aren't
 # understood by pyright, so those checks are off for this file only.
 """Warp kernels for the car env: one thread per world.
@@ -102,6 +102,13 @@ class EnvParams:
     v_contrast: wp.vec2
     v_white_balance: float
     v_noise: float
+    v_sun: wp.vec2
+    v_sun_elevation: wp.vec2  # rad
+    v_ambient: wp.vec2
+    v_lamp: wp.vec2
+    v_lamp_height: wp.vec2
+    v_light_tint: float
+    v_floor_gloss: wp.vec2
 
 
 @wp.struct
@@ -475,6 +482,12 @@ def hue_color(h: float) -> wp.vec3:
 
 
 @wp.func
+def light_color(t: float) -> wp.vec3:
+    """White, shifted warm (t > 0, like a bulb) or cool (t < 0, like daylight)."""
+    return wp.vec3(1.0 + t, 1.0, 1.0 - t)
+
+
+@wp.func
 def luminance(c: wp.vec3) -> float:
     return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
 
@@ -503,6 +516,15 @@ class LookIds:
     cam: int  # the car's camera
     cam_pos: wp.vec3  # default
     cam_quat: wp.quat  # default, MuJoCo (w, x, y, z) order
+    sun: int  # the directional light
+    sun_dir: wp.vec3  # default
+    sun_diffuse: wp.vec3  # default
+    sun_ambient: wp.vec3  # default
+    sun_specular: wp.vec3  # default
+    first_lamp: int  # spot lights first_lamp..first_lamp+num_lamps-1, off by default
+    num_lamps: int
+    floor_specular: float  # default
+    floor_shininess: float  # default
 
 
 @wp.kernel
@@ -519,9 +541,16 @@ def randomize_look(
     mat_texrepeat: wp.array2d[wp.vec2],
     cam_pos: wp.array2d[wp.vec3],
     cam_quat: wp.array2d[wp.quat],
+    mat_specular: wp.array2d[float],
+    mat_shininess: wp.array2d[float],
+    light_pos: wp.array2d[wp.vec3],
+    light_dir: wp.array2d[wp.vec3],
+    light_diffuse: wp.array2d[wp.vec3],
+    light_ambient: wp.array2d[wp.vec3],
+    light_specular: wp.array2d[wp.vec3],
 ):
     """A new random look for each world starting an episode: floor texture, color,
-    and scale, tape color and width, camera pose, and image settings for
+    and scale, tape color and width, camera pose, lighting, and image settings for
     postprocess. Writes the model's per-world arrays, which the renderer reads
     (like write_tape does with geom poses)."""
     i = wp.tid()
@@ -603,6 +632,58 @@ def randomize_look(
     w.contrast[i] = contrast
     w.color_gain[i] = gain
     w.noise[i] = noise
+
+    # Lighting. Sun: a directional light from a random direction, which shades the
+    # tape's edges and the floor's shine. On its own it lights a flat floor evenly
+    sun = ids.sun
+    elevation = wp.randf(rng, params.v_sun_elevation[0], params.v_sun_elevation[1])
+    azimuth = wp.randf(rng, 0.0, 6.2831853)
+    tint = params.v_light_tint
+    sun_color = light_color(wp.randf(rng, -tint, tint))
+    sun_brightness = wp.randf(rng, params.v_sun[0], params.v_sun[1])
+    ambient = wp.randf(rng, params.v_ambient[0], params.v_ambient[1])
+    if params.nominal != 0:
+        light_dir[i, sun] = ids.sun_dir
+        light_diffuse[i, sun] = ids.sun_diffuse
+        light_ambient[i, sun] = ids.sun_ambient
+        light_specular[i, sun] = ids.sun_specular
+    else:
+        light_dir[i, sun] = -wp.vec3(
+            wp.cos(elevation) * wp.cos(azimuth),
+            wp.cos(elevation) * wp.sin(azimuth),
+            wp.sin(elevation),
+        )
+        light_diffuse[i, sun] = sun_brightness * sun_color
+        light_ambient[i, sun] = ambient * sun_color
+        light_specular[i, sun] = 0.4 * sun_brightness * sun_color
+
+    # Lamps: anywhere over the floor (tracks fit within +-MAX_EXTENT), pointing
+    # roughly down, each a random brightness. They fade with distance, so they
+    # light the floor unevenly
+    for k in range(ids.num_lamps):
+        lamp = ids.first_lamp + k
+        x = wp.randf(rng, -4.5, 4.5)
+        y = wp.randf(rng, -4.5, 4.5)
+        z = wp.randf(rng, params.v_lamp_height[0], params.v_lamp_height[1])
+        aim = wp.vec3(wp.randf(rng, -0.5, 0.5), wp.randf(rng, -0.5, 0.5), -1.0)
+        lamp_color = wp.randf(rng, params.v_lamp[0], params.v_lamp[1]) * light_color(
+            wp.randf(rng, -tint, tint)
+        )
+        if params.nominal != 0:
+            lamp_color = wp.vec3(0.0, 0.0, 0.0)
+        light_pos[i, lamp] = wp.vec3(x, y, z)
+        light_dir[i, lamp] = wp.normalize(aim)
+        light_diffuse[i, lamp] = lamp_color
+        light_specular[i, lamp] = 0.5 * lamp_color
+
+    # Floor shine: matte to glossy (glare from the lamps and sun)
+    gloss = wp.randf(rng, params.v_floor_gloss[0], params.v_floor_gloss[1])
+    shininess = wp.randf(rng, 0.05, 0.5)
+    if params.nominal != 0:
+        gloss = ids.floor_specular
+        shininess = ids.floor_shininess
+    mat_specular[i, ids.floor_mat] = gloss
+    mat_shininess[i, ids.floor_mat] = shininess
 
 
 @wp.kernel

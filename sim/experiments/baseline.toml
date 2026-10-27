@@ -51,6 +51,14 @@ exposure = [0.6, 1.4]         # image brightness
 contrast = [0.7, 1.3]
 white_balance = 0.15          # +- per color channel, so colors shift a little
 noise = 0.04                  # sensor noise: up to this std per pixel (1 = full range), new every frame
+# Lighting (default: sun 0.7, ambient 0.3, lamps off)
+sun = [0.2, 0.9]              # directional light brightness: even over a flat floor
+sun_elevation_deg = [30, 90]  # its angle above the floor
+ambient = [0.1, 0.5]
+lamp = [0.0, 1.5]             # a spot light, fading as 1/(1 + d^2) at d m: uneven light, glare
+lamp_height = [0.8, 2.5]      # m above the floor
+light_tint = 0.15             # +- warm (bulb) or cool (daylight), per light
+floor_gloss = [0.0, 0.8]      # floor shine (default 0.5)
 
 [tracks]
 # Random track generator (assets/track_gen.py). Ranges are [min, max].

@@ -153,10 +153,14 @@ the policy learns "follow the tape" on any floor, not the sim's gray checker:
 - **Tape:** white half the time, otherwise any color, 2-5 cm wide. It's always kept
   brighter or darker than the floor so it stays visible.
 - **Camera mount:** +-1 cm height, +-3 degrees tilt.
+- **Lighting:** a sun (directional light) from a random direction, brightness, and
+  ambient level, plus a lamp (spot light) at a random place and height that fades
+  with distance, so the floor is lit unevenly. Each light is tinted warm or cool, and
+  the floor is matte to glossy, so the lamp can cause glare. No shadows yet.
 - **Image:** exposure, contrast, white balance, and per-frame sensor noise.
 
-The look lives in the model's per-world arrays (floor texture and color, tape color and
-width, camera pose), set by `env/kernels.py randomize_look` at each reset; the image
+The look lives in the model's per-world arrays (floor texture, color, and shine, tape
+color and width, camera pose, lights), set by `env/kernels.py randomize_look` at each reset; the image
 settings are applied in `postprocess`. With the default look, `postprocess` is exactly
 the Pi's crop (`env/preprocess.py`).
 

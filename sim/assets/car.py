@@ -17,6 +17,8 @@ from assets.track import Track, build_tape_pool, build_track, oval_centerline
 from config import CarConfig, load_config
 
 WHEEL_WIDTH = 0.025  # visual only, not worth a config entry yet
+LAMPS = 1  # spot lights for visual randomization, off by default. Each one costs
+# render time for every pixel: 1 is nearly free, 2 made rendering ~40% slower
 
 
 def build_scene(spec: mujoco.MjSpec) -> None:
@@ -52,6 +54,7 @@ def build_scene(spec: mujoco.MjSpec) -> None:
 
     world = spec.worldbody
     world.add_light(
+        name="sun",
         type=mujoco.mjtLightType.mjLIGHT_DIRECTIONAL,
         pos=[0, 0, 3],
         dir=[0.3, 0.2, -1],
@@ -59,6 +62,23 @@ def build_scene(spec: mujoco.MjSpec) -> None:
         ambient=[0.3, 0.3, 0.3],
         castshadow=False,
     )
+    # Lamps: spot lights that fade with distance, so they light the floor unevenly
+    # (bright pools, gradients, glare on a glossy floor). Off here; the GPU env
+    # turns them on and moves them per world (env/kernels.py randomize_look)
+    for k in range(LAMPS):
+        world.add_light(
+            name=f"lamp_{k}",
+            type=mujoco.mjtLightType.mjLIGHT_SPOT,
+            pos=[0, 0, 2],
+            dir=[0, 0, -1],
+            diffuse=[0, 0, 0],
+            ambient=[0, 0, 0],
+            specular=[0, 0, 0],
+            attenuation=[1, 0, 1],  # 1 / (1 + d^2), d in m
+            cutoff=70,  # cone half-angle, degrees (always, unlike other angles)
+            exponent=1,
+            castshadow=False,
+        )
     world.add_geom(
         name="floor",
         type=mujoco.mjtGeom.mjGEOM_PLANE,

@@ -6,7 +6,7 @@ Actions are [steer, throttle] in [-1, 1].
 Two kinds of observation:
 - pixels (render=True): the car's camera, preprocessed exactly like on the Pi
   (env/preprocess.py). This is all the actor sees. In training, the look is
-  randomized every episode ([visuals]: floor, tape, camera, exposure, noise).
+  randomized every episode ([visuals]: floor, tape, camera, lighting, exposure, noise).
 - obs: sim-only state (env/kernels.py:write_obs). Only the critic sees it, during
   training; the real car never has it.
 """
@@ -18,7 +18,7 @@ import numpy as np
 import torch
 import warp as wp
 
-from assets.car import build_model
+from assets.car import LAMPS, build_model
 from assets.track import Track, oval_centerline, tape_poses
 from config import load_config
 from env.kernels import (
@@ -93,6 +93,13 @@ PER_WORLD_MODEL_FIELDS = (
     "geom_size",  # tape width
     "cam_pos",  # camera height
     "cam_quat",  # camera tilt
+    "mat_specular",  # floor shine
+    "mat_shininess",
+    "light_pos",  # sun and lamps
+    "light_dir",
+    "light_diffuse",
+    "light_ambient",
+    "light_specular",
 )
 
 
@@ -190,6 +197,13 @@ class CarEnv:
         self.params.v_contrast = wp.vec2(*visuals.contrast)
         self.params.v_white_balance = visuals.white_balance
         self.params.v_noise = visuals.noise
+        self.params.v_sun = wp.vec2(*visuals.sun)
+        self.params.v_sun_elevation = wp.vec2(*np.radians(visuals.sun_elevation_deg))
+        self.params.v_ambient = wp.vec2(*visuals.ambient)
+        self.params.v_lamp = wp.vec2(*visuals.lamp)
+        self.params.v_lamp_height = wp.vec2(*visuals.lamp_height)
+        self.params.v_light_tint = visuals.light_tint
+        self.params.v_floor_gloss = wp.vec2(*visuals.floor_gloss)
 
         def zeros(shape, dtype=float):
             arr = wp.zeros(shape, dtype=dtype)
@@ -232,6 +246,16 @@ class CarEnv:
         self.look_ids.cam = cam_id
         self.look_ids.cam_pos = wp.vec3(*m.cam_pos[cam_id])
         self.look_ids.cam_quat = wp.quat(*m.cam_quat[cam_id])
+        sun = m.light("sun").id
+        self.look_ids.sun = sun
+        self.look_ids.sun_dir = wp.vec3(*m.light_dir[sun])
+        self.look_ids.sun_diffuse = wp.vec3(*m.light_diffuse[sun])
+        self.look_ids.sun_ambient = wp.vec3(*m.light_ambient[sun])
+        self.look_ids.sun_specular = wp.vec3(*m.light_specular[sun])
+        self.look_ids.first_lamp = m.light("lamp_0").id
+        self.look_ids.num_lamps = LAMPS
+        self.look_ids.floor_specular = float(m.mat_specular[floor_mat])
+        self.look_ids.floor_shininess = float(m.mat_shininess[floor_mat])
         self.track_id_t = wp.to_torch(self.worlds.track_id)
 
         self.rgb_out_t = None
@@ -349,6 +373,13 @@ class CarEnv:
                 m.mat_texrepeat,
                 m.cam_pos,
                 m.cam_quat,
+                m.mat_specular,
+                m.mat_shininess,
+                m.light_pos,
+                m.light_dir,
+                m.light_diffuse,
+                m.light_ambient,
+                m.light_specular,
             ],
         )
 

@@ -53,6 +53,13 @@ class VisualsConfig:
     contrast: list[float]
     white_balance: float
     noise: float
+    sun: list[float]
+    sun_elevation_deg: list[float]
+    ambient: list[float]
+    lamp: list[float]
+    lamp_height: list[float]
+    light_tint: float
+    floor_gloss: list[float]
 
 
 @dataclass

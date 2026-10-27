@@ -1,5 +1,5 @@
 """Preview what the policy sees: a grid of car camera images, each with a random
-look from [visuals] (floor, tape, camera, exposure, noise), after preprocessing.
+look from [visuals] (floor, tape, camera, lighting, exposure, noise), after preprocessing.
 
 Run from sim/:
     uv run python show_views.py                       # 24 random looks -> views.png
