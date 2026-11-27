@@ -58,6 +58,7 @@ env = CarEnv(
     episode_steps=cfg.env.episode_steps,
     randomize=cfg.randomize,
     visuals=cfg.visuals,
+    signs=cfg.signs,
     evaluate=True,  # world i drives track i from its fixed start
     nominal=not args.randomize,
 )
@@ -74,9 +75,12 @@ actor.eval()
 n = len(tracks)
 alive = torch.ones(
     n, device="cuda"
-)  # 0 after the first crash; later episodes don't count
-crash_step = torch.full((n,), -1, device="cuda")
+)  # 0 after the first failure (off-track or ran sign); later episodes don't count
+fail_step = torch.full((n,), -1, device="cuda")
+fail_ran_sign = torch.zeros(n, dtype=torch.bool, device="cuda")
 laps = torch.zeros(n, device="cuda")
+stops = torch.zeros(n, device="cuda")
+ran_signs = torch.zeros(n, device="cuda")
 speed = torch.zeros(n, device="cuda")
 offset = torch.zeros(n, device="cuda")
 steps_alive = torch.zeros(n, device="cuda")
@@ -101,21 +105,28 @@ with torch.no_grad():
         obs, pixels = out.obs, out.pixels
         if h is not None:
             h = h * (1 - out.done).unsqueeze(-1)
-        crashed = out.done * (1 - out.truncated)
+        failed = out.done * (1 - out.truncated)
 
         laps += env.laps_t * alive
+        stops += env.signs_stopped_t * alive
+        ran_signs += env.signs_ran_t * alive
         # obs of a world that just ended is already its next start, so skip it
         counted = alive * (1 - out.done)
         speed += out.obs[:, 3] * counted
         offset += out.obs[:, 0].abs() * counted
         steps_alive += counted
 
-        crash_step = torch.where((crashed * alive) > 0, step, crash_step)
-        alive *= 1 - crashed
+        just_failed = (failed * alive) > 0
+        fail_step = torch.where(just_failed, step, fail_step)
+        fail_ran_sign = torch.where(just_failed, env.signs_ran_t > 0, fail_ran_sign)
+        alive *= 1 - failed
 
 seconds = cfg.env.episode_steps * env.car.dt
-crash_step = crash_step.cpu()
-finished = int((crash_step < 0).sum())
+fail_step = fail_step.cpu()
+fail_ran_sign = fail_ran_sign.cpu()
+finished = int((fail_step < 0).sum())
+n_ran_fail = int(((fail_step >= 0) & fail_ran_sign).sum())
+n_off_track = int(((fail_step >= 0) & ~fail_ran_sign).sum())
 minutes = (steps_alive.sum() * env.car.dt / 60).clamp(min=1e-9)
 
 print(f"\n{run.name} / {actor_file.name}")
@@ -123,7 +134,10 @@ car = "randomized car and look" if args.randomize else "car.toml car, default lo
 print(
     f"{n} {kind} tracks, {car}, one {seconds:.0f} s episode each, mean action (no noise)\n"
 )
-print(f"  finished without crashing  {finished}/{n} ({100 * finished / n:.1f}%)")
+print(
+    f"  finished cleanly           {finished}/{n} ({100 * finished / n:.1f}%)  "
+    f"[off-track {n_off_track}, ran sign {n_ran_fail}]"
+)
 print(f"  laps/min                   {(laps.sum() / minutes).item():.2f}")
 print(
     f"  speed                      {(speed.sum() / steps_alive.sum()).item() * env.car.max_speed:.2f} m/s"
@@ -131,13 +145,28 @@ print(
 print(
     f"  |offset|                   {(offset.sum() / steps_alive.sum()).item():.3f}  (1 = on the tape)"
 )
+total_stops = int(stops.sum().item())
+total_ran = int(ran_signs.sum().item())
+total_signs = total_stops + total_ran
+if total_signs > 0:
+    print(
+        f"  stop signs obeyed          {total_stops}/{total_signs} "
+        f"({100 * total_stops / total_signs:.1f}%)  [ran {total_ran}]"
+    )
 
-crashes = [(int(s), i) for i, s in enumerate(crash_step.tolist()) if s >= 0]
-if crashes:
+failures = [
+    (int(s), i, bool(r))
+    for i, (s, r) in enumerate(
+        zip(fail_step.tolist(), fail_ran_sign.tolist(), strict=True)
+    )
+    if s >= 0
+]
+if failures:
     flag = "--track" if args.train else "--test"
     listed = ", ".join(
-        f"{i} ({s * env.car.dt:.1f} s)" for s, i in sorted(crashes, key=lambda c: c[1])
+        f"{i} ({s * env.car.dt:.1f} s, {'ran sign' if r else 'off-track'})"
+        for s, i, r in sorted(failures, key=lambda c: c[1])
     )
-    print(f"\n  crashed on {kind} tracks (time of crash): {listed}")
-    first = min(crashes, key=lambda c: c[1])[1]
+    print(f"\n  failed on {kind} tracks: {listed}")
+    first = min(failures, key=lambda c: c[1])[1]
     print(f"  watch one: uv run python view.py {run} {flag} {first}")

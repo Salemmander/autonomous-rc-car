@@ -51,9 +51,9 @@ class RolloutBuffer:
         time out together. They stay on the GPU as tensors; reading them (.item())
         forces a sync, so the caller only does that when it logs.
         """
-        # [crashes, laps, speed, |offset|, |steer change|, then one per reward term]
+        # [crashes, laps, speed, |offset|, |steer change|, stops, ran_signs, reward terms]
         self.h0.copy_(self.h)
-        stats = torch.zeros(5 + env.reward_terms_t.shape[1], device="cuda")
+        stats = torch.zeros(7 + env.reward_terms_t.shape[1], device="cuda")
 
         with torch.no_grad():
             obs, pixels = env.obs_t, env.pixels_t
@@ -82,7 +82,9 @@ class RolloutBuffer:
                     [
                         torch.stack(
                             [
-                                (done * (1 - truncated)).sum(),  # left the track
+                                (
+                                    done * (1 - truncated) * (1 - env.signs_ran_t)
+                                ).sum(),  # left the track (off-track only)
                                 env.laps_t.sum(),  # laps (each world's own track)
                                 obs[:, 3].sum(),  # speed / max_speed
                                 obs[:, 0].abs().sum(),  # |offset|, 1 = on the tape
@@ -98,6 +100,8 @@ class RolloutBuffer:
                                     ).abs()
                                     * (1 - done)
                                 ).sum(),
+                                env.signs_stopped_t.sum(),  # stop signs obeyed
+                                env.signs_ran_t.sum(),  # stop signs run
                             ]
                         ),
                         env.reward_terms_t.sum(0),
@@ -106,18 +110,22 @@ class RolloutBuffer:
 
         samples = self.rollout_steps * self.num_worlds
         minutes = samples * env.car.dt / 60  # total driving time across all worlds
-        terms = stats[5:] / samples  # average per step
+        terms = stats[7:] / samples  # average per step
         return {
             "drive/crashes_per_min": stats[0] / minutes,
             "drive/laps_per_min": stats[1] / minutes,
             "drive/speed": stats[2] / samples * env.car.max_speed,
             "drive/offset_abs": stats[3] / samples,
             "drive/steer_change": stats[4] / samples,
+            "drive/stops_per_min": stats[5] / minutes,
+            "drive/ran_signs_per_min": stats[6] / minutes,
             "reward/total": terms.sum(),
             "reward/progress": terms[0],
             "reward/off_track": terms[1],
             "reward/center": terms[2],
             "reward/steer_rate": terms[3],
+            "reward/throttle_rate": terms[4],
+            "reward/run_sign": terms[5],
         }
 
     def compute_gae(self, next_value, gamma, gae_lambda):

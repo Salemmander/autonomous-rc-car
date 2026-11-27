@@ -23,6 +23,18 @@ class RewardConfig:
     off_track: float
     center: float
     steer_rate: float
+    throttle_rate: float
+    run_sign: float
+
+
+@dataclass
+class SignConfig:
+    count: list[int]
+    min_spacing: float
+    zone_start: float
+    stop_speed: float
+    stop_time_s: float
+    yaw_jitter_deg: float
 
 
 @dataclass
@@ -93,6 +105,7 @@ class ExperimentConfig:
     randomize: RandomizeConfig
     visuals: VisualsConfig
     tracks: TrackGenConfig
+    signs: SignConfig
     ppo: PPOConfig
 
 
@@ -102,6 +115,7 @@ SECTIONS = {
     "randomize": RandomizeConfig,
     "visuals": VisualsConfig,
     "tracks": TrackGenConfig,
+    "signs": SignConfig,
     "ppo": PPOConfig,
 }
 TOP_LEVEL = ("name", "seed")
@@ -143,7 +157,7 @@ def _merge(base: dict, changes: dict, source: str) -> None:
             )
         if isinstance(base[key], dict):
             if not isinstance(value, dict):
-                raise ValueError(f"{source}: [{key}] must be a section")
+                raise TypeError(f"{source}: [{key}] must be a section")
             for k, v in value.items():
                 if k not in base[key]:
                     raise ValueError(
@@ -175,7 +189,7 @@ def _build(raw: dict) -> ExperimentConfig:
 
 
 def load_experiment(
-    path: Path | None = None, overrides: list[str] = []
+    path: Path | None = None, overrides: list[str] | None = None
 ) -> ExperimentConfig:
     """baseline.toml, then the experiment file (if any), then --set overrides."""
     raw = _read(BASELINE)
@@ -183,7 +197,7 @@ def load_experiment(
         changes = _read(path)
         changes.setdefault("name", path.stem)  # name the run after the file
         _merge(raw, changes, str(path))
-    for item in overrides:
+    for item in overrides or ():
         if "=" not in item:
             raise ValueError(f"--set {item}: expected section.key=value")
         dotted, value = item.split("=", 1)

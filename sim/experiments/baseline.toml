@@ -16,10 +16,12 @@ episode_steps = 600 # time limit per episode: 600 = 30 s at 20 Hz
 # Reward per step = sum of these terms, each scaled by its weight. 0 turns a term off.
 # Terms are computed in rcsim/env/kernels.py (step). To add a new kind of term, add a
 # weight here, a field in rcsim/experiment.py RewardConfig, and its formula in the kernel.
-progress = 1.0   # x distance driven along the track; full speed earns ~1 per step
-off_track = 5.0  # penalty once, when the car crosses the tape (episode ends)
-center = 0.5     # penalty x offset^2 per step, offset in [-1, 1] (1 = on the tape)
-steer_rate = 0.5 # penalty x (steering change per step)^2, steering in [-1, 1]
+progress = 1.0      # x distance driven along the track; full speed earns ~1 per step
+off_track = 5.0     # penalty once, when the car crosses the tape (ends episode)
+center = 0.5        # penalty x offset^2 per step, offset in [-1, 1] (1 = on the tape)
+steer_rate = 0.5    # penalty x (steering change per step)^2, steering in [-1, 1]
+throttle_rate = 0.5 # penalty x (throttle change per step)^2, throttle in [-1, 1]
+run_sign = 15.0     # penalty once, for crossing an uncleared stop sign (ends episode)
 
 [randomize]
 # Every episode gets a slightly different car, so the policy works on the real one
@@ -89,12 +91,25 @@ width = [0.5, 0.8] # m, between the tapes (the car is 0.18 m wide)
 length = [8.0, 30.0] # m, once around
 gap = 0.3 # m, minimum space between tapes of different parts of the track
 
+[signs]
+# Stop signs placed along the right edge of each track (rcsim/assets/stop_sign.py).
+# Set count = [0, 0] to turn stop signs off.
+count = [
+  1,
+  3,
+] # [min, max] signs per episode (capped by track length / min_spacing)
+min_spacing = 3.0 # m, minimum distance between signs around the loop
+zone_start = 1.50 # m before the sign where stopping counts for the sign
+stop_speed = 0.15 # m/s, car counts as stopped below this speed
+stop_time_s = 1.0 # s, how long to hold stopped in the zone to clear the sign
+yaw_jitter_deg = 10.0 # +- degrees random sign angle jitter (0 in nominal eval)
+
 [ppo]
 iterations = 300      # each one = collect a rollout, then update
 checkpoint_every = 50 # save actor_iterNNNN.pt every this many iterations; 0 = off
 rollout_steps = 32    # steps per world per rollout (32 = 1.6 s of driving)
 lr = 3e-4             # decays linearly to 0 over the run
-minibatch_size = 4096 # samples per gradient step; bigger runs out of GPU memory (10 GB)
+minibatch_size = 2048 # samples per gradient step (64 worlds x 32 steps); fits 120x160 in 10 GB VRAM
 update_epochs = 2     # passes over each rollout; 2 is ~1.7x faster per iteration than 4 and gets to a good policy sooner
 hidden_dim = 128      # critic width (the actor is PilotNet, fixed size)
 gamma = 0.99          # discount: 0.99 = cares ~100 steps (5 s) ahead

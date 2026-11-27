@@ -25,6 +25,9 @@ from pathlib import Path
 
 import torch
 import warp as wp
+from torch.optim import Adam
+from torch.utils.tensorboard import SummaryWriter
+
 from rcsim.assets.track_gen import generate_tracks
 from rcsim.env.car_env import CarEnv
 from rcsim.experiment import load_experiment, to_toml
@@ -33,8 +36,6 @@ from rcsim.paths import RUNS_DIR
 from rcsim.ppo.graph import Graphed
 from rcsim.ppo.ppo import ppo_update
 from rcsim.ppo.rollout import RolloutBuffer
-from torch.optim import Adam
-from torch.utils.tensorboard import SummaryWriter
 
 wp.config.log_level = wp.LOG_WARNING
 torch.backends.cuda.matmul.allow_tf32 = True  # faster matmuls on RTX 30xx
@@ -76,6 +77,7 @@ env = CarEnv(
     episode_steps=cfg.env.episode_steps,
     randomize=cfg.randomize,
     visuals=cfg.visuals,
+    signs=cfg.signs,
 )
 assert env.pixel_shape is not None
 actor = RecurrentActor(env.pixel_shape, env.action_dim, ppo.hidden_dim).cuda()
@@ -172,10 +174,17 @@ try:
             for k, v in scalars.items():
                 writer.add_scalar(k, v, env_steps)
 
+            sign_str = (
+                f"| stops {scalars['drive/stops_per_min']:4.1f} "
+                f"ran {scalars['drive/ran_signs_per_min']:4.1f} "
+                if cfg.signs.count[1] > 0
+                else ""
+            )
             print(
                 f"iter {it:4d} "
                 f"| laps/min {scalars['drive/laps_per_min']:4.1f} "
                 f"| crashes/min {scalars['drive/crashes_per_min']:5.2f} "
+                f"{sign_str}"
                 f"| speed {scalars['drive/speed']:4.2f} m/s "
                 f"| |offset| {scalars['drive/offset_abs']:.2f} "
                 f"| steer change {scalars['drive/steer_change']:.3f} "

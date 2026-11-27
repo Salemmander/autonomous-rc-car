@@ -12,6 +12,7 @@ import math
 import mujoco
 import mujoco.viewer
 
+from rcsim.assets.stop_sign import MAX_SIGNS, add_stop_sign_assets, build_sign_pool
 from rcsim.assets.textures import floor_textures
 from rcsim.assets.track import Track, build_tape_pool, build_track, oval_centerline
 from rcsim.config import CarConfig, load_config
@@ -51,6 +52,8 @@ def build_scene(spec: mujoco.MjSpec) -> None:
         tex.data = rgb.tobytes()
     # Tape color comes from this material, so it can be changed per world too
     spec.add_material(name="tape", rgba=[0.95, 0.95, 0.95, 1])
+    # Stop-sign mesh, texture, and materials (geoms are added in build_sign_pool)
+    add_stop_sign_assets(spec)
 
     world = spec.worldbody
     world.add_light(
@@ -175,6 +178,7 @@ def build_model(
         build_track(spec, track)
     if tape_pool:
         build_tape_pool(spec, tape_pool)
+    build_sign_pool(spec, MAX_SIGNS)
     build_car(spec, cfg)
     return spec, spec.compile()
 

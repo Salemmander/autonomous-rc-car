@@ -12,7 +12,7 @@ the Pi (`rcsim/env/preprocess.py`: crop the top 30%, RGB). The critic sees sim-o
 
 ```
 train.py  eval.py  view.py   train a policy, score it, watch it drive
-tools/                       dev tools: show_tracks, show_views, drive (Xbox), bench
+tools/                       dev tools: show_tracks, show_views, bench, controller (Xbox)
 rcsim/                       the library (installed into the venv, so tools/ can import it)
   env/                         the GPU env: car_env.py (CarEnv), kernels.py (Warp), preprocess.py
   model/                       the policy and critic networks (agent.py)
@@ -138,8 +138,8 @@ uv run python tools/show_tracks.py                                # tracks 0-15,
 uv run python tools/show_tracks.py --first 16                     # the next 16
 uv run python tools/show_tracks.py --test                          # the test tracks
 uv run python tools/show_tracks.py --set 'tracks.corners=[8,20]'  # try a setting
-uv run python tools/drive.py --track 3                            # drive track 3 yourself
-uv run python tools/drive.py --test 3                             # or test track 3
+uv run python view.py --manual --track 3                          # drive track 3 yourself
+uv run python view.py --manual --test 3                           # or test track 3
 ```
 
 ## The car: delay, lag, and randomization
@@ -190,5 +190,5 @@ uv run python tools/show_views.py --set visuals.noise=0.1   # try a setting
 
 ## Other scripts
 
-- `tools/drive.py`: drive the car yourself with an Xbox controller (`--track N` / `--test N` for a random track, default the oval)
+- `view.py --manual`: drive the car yourself with an Xbox controller (`--track N` / `--test N`, default test track 0)
 - `tools/bench.py`: env steps per second, with and without camera rendering

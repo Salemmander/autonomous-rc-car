@@ -19,6 +19,8 @@ import torch
 import warp as wp
 
 from rcsim.assets.car import LAMPS, build_model
+from rcsim.assets.stop_sign import MAX_SIGNS
+from rcsim.assets.textures import FLOORS
 from rcsim.assets.track import Track, oval_centerline, tape_poses
 from rcsim.config import load_config
 from rcsim.env.kernels import (
@@ -34,12 +36,14 @@ from rcsim.env.kernels import (
     randomize_look,
     reset_all,
     step,
+    write_signs,
     write_tape,
 )
 from rcsim.env.preprocess import crop_top
 from rcsim.experiment import (
     RandomizeConfig,
     RewardConfig,
+    SignConfig,
     VisualsConfig,
     load_experiment,
 )
@@ -119,6 +123,7 @@ class CarEnv:
         episode_steps: int | None = None,
         randomize: RandomizeConfig | None = None,
         visuals: VisualsConfig | None = None,
+        signs: SignConfig | None = None,
         evaluate: bool = False,
         nominal: bool | None = None,
     ):
@@ -151,6 +156,8 @@ class CarEnv:
         # One shared set of tape boxes, moved onto each world's track by write_tape
         _, self.model = build_model(cfg, tape_pool=self.num_tape)
         self.first_tape = self.model.geom("tape_0").id
+        self.first_sign_face = self.model.geom("sign_face_0").id
+        self.first_sign_pole = self.model.geom("sign_pole_0").id
         self.device_model = mjw.put_model(self.model)
         self.device_data = mjw.make_data(self.model, nworld=num_worlds)
         # Model arrays that differ per world (the look, randomize_look). The
@@ -170,13 +177,14 @@ class CarEnv:
         self.car.speed_time = cfg.throttle.response_time_s
 
         # Anything not given comes from experiments/baseline.toml
-        if None in (reward, episode_steps, randomize, visuals):
+        if None in (reward, episode_steps, randomize, visuals, signs):
             baseline = load_experiment()
             reward = reward or baseline.reward
             episode_steps = episode_steps or baseline.env.episode_steps
             randomize = randomize or baseline.randomize
             visuals = visuals or baseline.visuals
-        assert reward and episode_steps and randomize and visuals
+            signs = signs or baseline.signs
+        assert reward and episode_steps and randomize and visuals and signs
         self.params = EnvParams()
         self.params.episode_steps = episode_steps
         self.params.evaluate = int(evaluate)
@@ -185,6 +193,15 @@ class CarEnv:
         self.params.w_off_track = reward.off_track
         self.params.w_center = reward.center
         self.params.w_steer_rate = reward.steer_rate
+        self.params.w_throttle_rate = reward.throttle_rate
+        self.params.w_run_sign = reward.run_sign
+        self.params.sign_min = signs.count[0]
+        self.params.sign_max = signs.count[1]
+        self.params.sign_min_spacing = signs.min_spacing
+        self.params.sign_zone_start = signs.zone_start
+        self.params.sign_stop_speed = signs.stop_speed
+        self.params.sign_stop_steps = max(1, round(signs.stop_time_s / cfg.control.dt))
+        self.params.sign_yaw_jitter = float(np.radians(signs.yaw_jitter_deg))
         self.params.r_latency = wp.vec2(*randomize.latency)
         self.params.r_steer_time = wp.vec2(*randomize.steer_response)
         self.params.r_speed_time = wp.vec2(*randomize.speed_response)
@@ -221,12 +238,14 @@ class CarEnv:
         # Each reward term separately, for logging (order in rcsim/env/kernels.py)
         self.reward_terms, self.reward_terms_t = zeros((num_worlds, NUM_REWARD_TERMS))
         self.laps, self.laps_t = zeros(num_worlds)  # laps driven this step
+        self.signs_stopped, self.signs_stopped_t = zeros(num_worlds)
+        self.signs_ran, self.signs_ran_t = zeros(num_worlds)
         self.done, self.done_t = zeros(num_worlds)  # 1.0 == done
         self.truncated, self.truncated_t = zeros(num_worlds)
 
         # Per-world car and track state (see Worlds in rcsim/env/kernels.py)
         self.worlds = Worlds()
-        for name in ("idx", "steps", "resets", "track_id"):
+        for name in ("idx", "steps", "resets", "track_id", "num_signs", "sign_dwell"):
             setattr(self.worlds, name, wp.zeros(num_worlds, dtype=int))
         for name in (
             "s_prev", "speed", "steer", "latency", "steer_time", "speed_time",
@@ -236,6 +255,9 @@ class CarEnv:
             setattr(self.worlds, name, wp.zeros(num_worlds, dtype=float))
         self.worlds.commands = wp.zeros((num_worlds, HISTORY), dtype=wp.vec2)
         self.worlds.color_gain = wp.zeros(num_worlds, dtype=wp.vec3)
+        self.worlds.sign_s = wp.zeros((num_worlds, MAX_SIGNS), dtype=float)
+        self.worlds.sign_pose = wp.zeros((num_worlds, MAX_SIGNS), dtype=wp.vec3)
+        self.worlds.sign_cleared = wp.zeros((num_worlds, MAX_SIGNS), dtype=int)
 
         # Where the randomized look goes in the model
         m = self.model
@@ -245,11 +267,13 @@ class CarEnv:
         self.look_ids = LookIds()
         self.look_ids.floor_mat = floor_mat
         self.look_ids.tape_mat = tape_mat
-        self.look_ids.num_floor_tex = m.ntex  # every texture is a floor; 0 = default
+        # Only textures 0..len(FLOORS) are floors (0 = default grid); stop_sign comes after
+        num_floor_tex = 1 + len(FLOORS)
+        self.look_ids.num_floor_tex = num_floor_tex
         # Exact average luminance [0, 1] of each floor texture (so bright tiles/planks
         # trigger dark tape reliably in randomize_look)
         tex_lums = []
-        for tid in range(m.ntex):
+        for tid in range(num_floor_tex):
             adr = int(m.tex_adr[tid])
             size = (
                 int(m.tex_height[tid])
@@ -365,6 +389,8 @@ class CarEnv:
                 self.reward,
                 self.reward_terms,
                 self.laps,
+                self.signs_stopped,
+                self.signs_ran,
                 self.done,
                 self.truncated,
                 self.final_obs,
@@ -419,6 +445,17 @@ class CarEnv:
                 self.device_data.geom_xpos,
                 self.device_data.geom_xmat,
                 self.device_model.geom_size,
+            ],
+        )
+        wp.launch(
+            write_signs,
+            dim=(self.num_worlds, MAX_SIGNS),
+            inputs=[
+                self.worlds,
+                self.first_sign_face,
+                self.first_sign_pole,
+                self.device_data.geom_xpos,
+                self.device_data.geom_xmat,
             ],
         )
         mjw.com_pos(self.device_model, self.device_data)

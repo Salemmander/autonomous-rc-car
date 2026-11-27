@@ -3,7 +3,7 @@
 # understood by pyright, so those checks are off for this file only.
 """Warp kernels for the car env: one thread per world.
 
-Same math as rcsim/assets/track.py and tools/drive.py (the numpy reference), done for every
+Same track math as rcsim/assets/track.py (the numpy reference), done for every
 world at once on the GPU. Physics is the kinematic bicycle model written straight
 into qpos; MuJoCo is only used to render.
 
@@ -13,6 +13,12 @@ new random one every reset.
 
 import warp as wp
 
+from rcsim.assets.stop_sign import (
+    MAX_SIGNS,
+    SIGN_EDGE_OFFSET,
+    SIGN_HEIGHT,
+    SIGN_RADIUS,
+)
 from rcsim.assets.track import (
     HIDDEN_Z,
     TAPE_HEIGHT,
@@ -28,11 +34,15 @@ LOOKAHEAD_STRIDE = wp.constant(10)  # points between them (about 0.5 m)
 # Recent commands kept per world, for latency: up to (HISTORY - 1) steps late
 HISTORY = wp.constant(4)
 # offset, heading cos/sin, speed, steering, lookahead points, the last 2 commands,
-# and this episode's car (speed scale, steer scale, trim, latency)
-OBS_DIM = 5 + 2 * LOOKAHEAD + 4 + 4  # wp.constant returns the plain int, so this works
+# this episode's car (speed scale, steer scale, trim, latency), and privileged
+# next-stop-sign state (dist, cleared, dwell fraction)
+OBS_DIM = 5 + 2 * LOOKAHEAD + 4 + 4 + 3  # wp.constant returns plain int
 CMD_STEER = wp.constant(5 + 2 * LOOKAHEAD)  # obs index of the newest steering command
-# Reward terms written out separately for logging: progress, off_track, center, steer_rate
-NUM_REWARD_TERMS = 4
+# Reward terms written out separately for logging:
+# progress, off_track, center, steer_rate, throttle_rate, run_sign
+NUM_REWARD_TERMS = 6
+MAX_SIGNS_C = wp.constant(MAX_SIGNS)
+SIGN_DIST_NORM = wp.constant(4.0)  # m, clamp/scale for critic's next-sign distance
 
 # Reset noise so the policy sees more than the perfect starting pose
 START_OFFSET_FRAC = wp.constant(0.3)  # of the half width
@@ -89,6 +99,16 @@ class EnvParams:
     w_off_track: float
     w_center: float
     w_steer_rate: float
+    w_throttle_rate: float
+    w_run_sign: float
+    # Stop sign settings (SignConfig)
+    sign_min: int
+    sign_max: int
+    sign_min_spacing: float
+    sign_zone_start: float
+    sign_stop_speed: float
+    sign_stop_steps: int
+    sign_yaw_jitter: float  # rad
     # Randomization ranges (RandomizeConfig): [min, max] multipliers of the nominal car
     r_latency: wp.vec2
     r_steer_time: wp.vec2
@@ -144,6 +164,12 @@ class Worlds:
     contrast: wp.array1d[float]
     color_gain: wp.array1d[wp.vec3]  # white balance
     noise: wp.array1d[float]
+    # Stop signs for this episode (placed in reset_world, drawn in write_signs)
+    num_signs: wp.array1d[int]
+    sign_s: wp.array2d[float]  # (num_worlds, MAX_SIGNS) arc-length s along track
+    sign_pose: wp.array2d[wp.vec3]  # (num_worlds, MAX_SIGNS) world (x, y, yaw)
+    sign_cleared: wp.array2d[int]  # 0 = armed, 1 = stopped & cleared, 2 = ran/missed
+    sign_dwell: wp.array1d[int]  # consecutive stopped steps inside armed zone
 
 
 @wp.func
@@ -174,16 +200,32 @@ def track_s(bank: TrackBank, t: int, p: wp.vec2, j: int) -> float:
 
 
 @wp.func
+def find_s_index(bank: TrackBank, t: int, target_s: float) -> int:
+    """Binary search for the centerline point closest to arc-length target_s."""
+    lo = wp.int32(0)
+    hi = bank.n[t] - 1
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if bank.s[t, mid] < target_s:
+            lo = mid + 1
+        else:
+            hi = mid
+    return int(lo)
+
+
+@wp.func
 def write_obs(
     i: int,
     qpos: wp.array2d[float],
     bank: TrackBank,
     car: CarParams,
+    params: EnvParams,
     w: Worlds,
     obs: wp.array2d[float],
 ):
     """The critic's observation. It can use anything the sim knows, since it only
-    exists during training: including the delayed commands and this episode's car."""
+    exists during training: including the delayed commands, this episode's car,
+    and privileged stop-sign state (the actor never sees this)."""
     p = wp.vec2(qpos[i, X], qpos[i, Y])
     yaw = qpos[i, YAW]
     t = w.track_id[i]
@@ -222,6 +264,24 @@ def write_obs(
     obs[i, o + 5] = w.max_steer[i] / car.max_steer
     obs[i, o + 6] = w.steer_trim[i]
     obs[i, o + 7] = w.latency[i] / car.dt
+
+    # Privileged stop-sign state (critic only): distance to nearest upcoming sign,
+    # whether that sign is already cleared, and current stop-dwell progress [0, 1]
+    length = bank.length[t]
+    cur_s = w.s_prev[i]
+    best_dist = wp.float32(SIGN_DIST_NORM)
+    best_cleared = wp.float32(0.0)
+    n_signs = w.num_signs[i]
+    for m in range(n_signs):
+        d = w.sign_s[i, m] - cur_s
+        if d < 0.0:
+            d += length
+        if d < best_dist:
+            best_dist = d
+            best_cleared = 1.0 if w.sign_cleared[i, m] == 1 else 0.0
+    obs[i, o + 8] = wp.min(best_dist, SIGN_DIST_NORM) / SIGN_DIST_NORM
+    obs[i, o + 9] = best_cleared
+    obs[i, o + 10] = float(w.sign_dwell[i]) / float(wp.max(params.sign_stop_steps, 1))
 
 
 @wp.func
@@ -293,6 +353,48 @@ def reset_world(
         w.commands[i, k] = wp.vec2(0.0, -1.0)
     w.steps[i] = 0
 
+    # Place stop signs along the right edge of the track, well ahead of the start
+    # pose and spaced apart. In evaluate mode, seed from the track id so every
+    # eval run sees the exact same sign placements per test track.
+    length = bank.length[t]
+    usable = length - 3.0  # keep >= 2.2 m clear ahead of start and 0.8 m behind
+    max_fit = int(usable / wp.max(params.sign_min_spacing, 1.0))
+    max_fit = wp.min(params.sign_max, wp.min(MAX_SIGNS_C, wp.max(max_fit, 0)))
+    min_fit = wp.min(params.sign_min, max_fit)
+    sign_rng = rng
+    if params.evaluate != 0:
+        sign_rng = wp.rand_init(seed + 7, t)
+    k_signs = wp.int32(0)
+    if max_fit > 0:
+        k_signs = wp.randi(sign_rng, min_fit, max_fit + 1)
+    w.num_signs[i] = k_signs
+    w.sign_dwell[i] = 0
+    for m in range(MAX_SIGNS_C):
+        if m < k_signs:
+            sector = usable / float(k_signs)
+            local = wp.randf(sign_rng, 0.15, 0.85) * sector
+            s_m = w.s_prev[i] + 2.2 + float(m) * sector + local
+            s_m = s_m - length * wp.floor(s_m / length)
+            idx_m = find_s_index(bank, t, s_m)
+            # normal points left, so -normal places the sign on the right edge
+            p_m = bank.centerline[t, idx_m] - bank.normals[t, idx_m] * (
+                bank.half_width[t] + SIGN_EDGE_OFFSET
+            )
+            tan_m = bank.tangents[t, idx_m]
+            # Front face of stop_plate mesh is +x, so point opposite the track tangent
+            yaw_m = wp.atan2(-tan_m[1], -tan_m[0])
+            if params.nominal == 0:
+                yaw_m += wp.randf(
+                    sign_rng, -params.sign_yaw_jitter, params.sign_yaw_jitter
+                )
+            w.sign_s[i, m] = s_m
+            w.sign_pose[i, m] = wp.vec3(p_m[0], p_m[1], yaw_m)
+            w.sign_cleared[i, m] = 0
+        else:
+            w.sign_s[i, m] = 0.0
+            w.sign_pose[i, m] = wp.vec3(0.0, 0.0, 0.0)
+            w.sign_cleared[i, m] = 1
+
 
 @wp.kernel
 def step(
@@ -306,6 +408,8 @@ def step(
     reward: wp.array1d[float],
     reward_terms: wp.array2d[float],
     laps: wp.array1d[float],
+    signs_stopped: wp.array1d[float],
+    signs_ran: wp.array1d[float],
     done: wp.array1d[float],
     truncated: wp.array1d[float],
     final_obs: wp.array2d[float],
@@ -319,13 +423,14 @@ def step(
     cmd = wp.vec2(
         wp.clamp(actions[i, 0], -1.0, 1.0), wp.clamp(actions[i, 1], -1.0, 1.0)
     )
-    # Steering change since last step's command, in [-2, 2]
+    # Control change since last step's command, each in [-2, 2]
     steer_change = cmd[0] - w.commands[i, 0][0]
+    throttle_change = cmd[1] - w.commands[i, 0][1]
     for k in range(HISTORY - 1, 0, -1):
         w.commands[i, k] = w.commands[i, k - 1]
     w.commands[i, 0] = cmd
 
-    # Kinematic bicycle model (same as drive.py), in substeps, plus what makes the
+    # Kinematic bicycle model, in substeps, plus what makes the
     # real car slower to respond:
     # - latency: a command reaches the wheels `latency` s after its camera frame, so
     #   each substep uses the newest command that has arrived by then
@@ -370,7 +475,8 @@ def step(
 
     # Progress, handling the jump at the start line (see Track.progress)
     length = bank.length[t]
-    ds = s - w.s_prev[i]
+    s_old = w.s_prev[i]
+    ds = s - s_old
     if ds > length * 0.5:
         ds -= length
     elif ds < -length * 0.5:
@@ -383,37 +489,101 @@ def step(
     w.steps[i] += 1
     timeout = w.steps[i] >= params.episode_steps
 
+    # Stop-sign state machine: stop below sign_stop_speed for sign_stop_steps inside
+    # the zone to clear the sign; crossing an armed sign ends the episode.
+    r_run_sign = wp.float32(0.0)
+    stopped = wp.float32(0.0)
+    ran = wp.float32(0.0)
+    ran_sign = wp.int32(0)
+    in_armed_zone = wp.int32(0)
+    if not off_track:
+        n_signs = w.num_signs[i]
+        for m in range(n_signs):
+            sm = w.sign_s[i, m]
+            dist_old = sm - s_old
+            if dist_old < 0.0:
+                dist_old += length
+            dist_new = sm - s
+            if dist_new < 0.0:
+                dist_new += length
+
+            # Forward crossing of sign m: dist ahead wrapped from small -> ~length
+            if (
+                ds > 0.0
+                and dist_old <= 0.5
+                and dist_new > length * 0.5
+                and w.sign_cleared[i, m] == 0
+            ):
+                r_run_sign -= params.w_run_sign
+                ran += 1.0
+                ran_sign = 1
+                w.sign_cleared[i, m] = 2
+                w.sign_dwell[i] = 0
+
+            # Re-arm sign m once far enough away so it applies again on the next lap
+            if w.sign_cleared[i, m] != 0 and dist_new > 1.5 and dist_new < length - 1.5:
+                w.sign_cleared[i, m] = 0
+
+            # Inside an armed sign's stopping zone: count consecutive stopped steps
+            if w.sign_cleared[i, m] == 0 and dist_new <= params.sign_zone_start:
+                in_armed_zone = 1
+                if v < params.sign_stop_speed:
+                    w.sign_dwell[i] += 1
+                    if w.sign_dwell[i] >= params.sign_stop_steps:
+                        w.sign_cleared[i, m] = 1
+                        w.sign_dwell[i] = 0
+                        stopped += 1.0
+                else:
+                    w.sign_dwell[i] = 0
+    if in_armed_zone == 0:
+        w.sign_dwell[i] = 0
+    signs_stopped[i] = stopped
+    signs_ran[i] = ran
+
     # Reward = weighted sum of terms (weights from rcsim/experiment.py RewardConfig)
     offset_n = offset / half_width  # 0 = middle, +-1 = on the tape
     r_progress = params.w_progress * ds / (car.max_speed * car.dt)  # full speed ~1
     r_center = -params.w_center * offset_n * offset_n
     r_steer_rate = -params.w_steer_rate * steer_change * steer_change
+    r_throttle_rate = -params.w_throttle_rate * throttle_change * throttle_change
     r_off_track = 0.0
-    if off_track:
-        # Leaving the track is only the penalty, no credit for that last step
+    failed = off_track or (ran_sign != 0)
+    if failed:
+        # Violation step is only the penalty, no credit for that last step
         r_progress = 0.0
         r_center = 0.0
         r_steer_rate = 0.0
-        r_off_track = -params.w_off_track
+        r_throttle_rate = 0.0
+        if off_track:
+            r_off_track = -params.w_off_track
 
-    reward[i] = r_progress + r_off_track + r_center + r_steer_rate
+    reward[i] = (
+        r_progress
+        + r_off_track
+        + r_center
+        + r_steer_rate
+        + r_throttle_rate
+        + r_run_sign
+    )
     reward_terms[i, 0] = r_progress
     reward_terms[i, 1] = r_off_track
     reward_terms[i, 2] = r_center
     reward_terms[i, 3] = r_steer_rate
+    reward_terms[i, 4] = r_throttle_rate
+    reward_terms[i, 5] = r_run_sign
 
-    is_done = off_track or timeout
+    is_done = failed or timeout
     done[i] = 1.0 if is_done else 0.0
     # Timeout isn't failure: PPO bootstraps the value from final_obs instead of 0
-    is_truncated = timeout and not off_track
+    is_truncated = timeout and not failed
     truncated[i] = 1.0 if is_truncated else 0.0
 
     if is_truncated:
-        write_obs(i, qpos, bank, car, w, final_obs)
+        write_obs(i, qpos, bank, car, params, w, final_obs)
     if is_done:
         reset_world(i, qpos, bank, car, params, w, seed, num_worlds)
 
-    write_obs(i, qpos, bank, car, w, obs)
+    write_obs(i, qpos, bank, car, params, w, obs)
 
 
 @wp.kernel
@@ -436,7 +606,7 @@ def reset_all(
     # time out on the same step forever, and training sees bursts of resets
     if params.evaluate == 0:
         w.steps[i] = wp.randi(wp.rand_init(seed + 1, i), 0, params.episode_steps)
-    write_obs(i, qpos, bank, car, w, obs)
+    write_obs(i, qpos, bank, car, params, w, obs)
     reward[i] = 0.0
     done[i] = 0.0
     truncated[i] = 0.0
@@ -474,6 +644,34 @@ def write_tape(
         )
     else:
         geom_xpos[i, g] = wp.vec3(0.0, 0.0, HIDDEN_Z)
+
+
+@wp.kernel
+def write_signs(
+    w: Worlds,
+    first_face: int,
+    first_pole: int,
+    geom_xpos: wp.array2d[wp.vec3],
+    geom_xmat: wp.array2d[wp.mat33],
+):
+    """Move world i's stop-sign plates and poles onto its track (unused ones stay hidden)."""
+    i, k = wp.tid()
+    gf = first_face + k
+    gp = first_pole + k
+    if k < w.num_signs[i]:
+        pose = w.sign_pose[i, k]
+        c = wp.cos(pose[2])
+        s = wp.sin(pose[2])
+        rot = wp.mat33(c, -s, 0.0, s, c, 0.0, 0.0, 0.0, 1.0)
+        geom_xpos[i, gf] = wp.vec3(pose[0], pose[1], SIGN_HEIGHT)
+        geom_xmat[i, gf] = rot
+        # Mount pole slightly behind the plate (-x in sign local frame) so it doesn't poke through the front
+        pole_z = (SIGN_HEIGHT - SIGN_RADIUS * 0.5) * 0.5
+        geom_xpos[i, gp] = wp.vec3(pose[0] - c * 0.006, pose[1] - s * 0.006, pole_z)
+        geom_xmat[i, gp] = rot
+    else:
+        geom_xpos[i, gf] = wp.vec3(0.0, 0.0, HIDDEN_Z)
+        geom_xpos[i, gp] = wp.vec3(0.0, 0.0, HIDDEN_Z)
 
 
 @wp.func

@@ -21,3 +21,6 @@ build-backend = "uv_build"
 [tool.uv.build-backend]
 module-name = "rcsim"
 module-root = ""
+
+[tool.ruff.lint.isort]
+known-first-party = ["rcsim"]

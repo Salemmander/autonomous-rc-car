@@ -6,7 +6,7 @@ Self-driving XiaoRGEEK F1 RC car on a Raspberry Pi 5, with a GPU-parallel MuJoCo
 
 - `sim/` — **Active development** (branch `feature/sim`): GPU-parallel MuJoCo Warp `CarEnv` + asymmetric PPO (`sim/rcsim/`). See [sim/README.md](sim/README.md) and [notes/sim-rl-plan.md](notes/sim-rl-plan.md).
   - `sim/train.py`, `sim/eval.py`, `sim/view.py` — train, benchmark on held-out tracks, watch rollouts
-  - `sim/tools/` — `show_tracks.py`, `show_views.py`, `drive.py`, `bench.py`
+  - `sim/tools/` — `show_tracks.py`, `show_views.py`, `bench.py`, `controller.py`
   - `sim/rcsim/` — installed editable package (`env/`, `model/`, `ppo/`, `assets/`, `config.py`, `experiment.py`, `checkpoints.py`, `paths.py`)
   - `sim/experiments/baseline.toml` — single source of truth for training/sim defaults
 - `config/car.toml` — Shared vehicle parameters (camera pose/FOV, servo/throttle limits, latency, control rate) used by sim and car.
