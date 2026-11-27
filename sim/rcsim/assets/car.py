@@ -4,19 +4,21 @@ The car body's origin is the rear axle center, the same reference the config use
 Poses are written straight into qpos by the kinematic bicycle model, so there are
 no actuators and contacts are off.
 
-Run from sim/: uv run python -m assets.car   (opens the viewer)
+Run from sim/: uv run python -m rcsim.assets.car   (opens the viewer)
 """
 
 import math
 
 import mujoco
 import mujoco.viewer
-import numpy as np
 
-from assets.track import build_track, oval_centerline
-from config import CarConfig, load_config
+from rcsim.assets.textures import floor_textures
+from rcsim.assets.track import Track, build_tape_pool, build_track, oval_centerline
+from rcsim.config import CarConfig, load_config
 
 WHEEL_WIDTH = 0.025  # visual only, not worth a config entry yet
+LAMPS = 1  # spot lights for visual randomization, off by default. Each one costs
+# render time for every pixel: 1 is nearly free, 2 made rendering ~40% slower
 
 
 def build_scene(spec: mujoco.MjSpec) -> None:
@@ -36,9 +38,23 @@ def build_scene(spec: mujoco.MjSpec) -> None:
     )
     floor_mat = spec.add_material(name="floor", texrepeat=[10, 10])
     floor_mat.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = "grid"
+    # More floors for visual randomization: the GPU env swaps the floor material's
+    # texture per world (rcsim/env/kernels.py randomize_look)
+    for name, rgb in floor_textures():
+        tex = spec.add_texture(
+            name=f"floor_{name}",
+            type=mujoco.mjtTexture.mjTEXTURE_2D,
+            width=rgb.shape[1],
+            height=rgb.shape[0],
+            nchannel=3,
+        )
+        tex.data = rgb.tobytes()
+    # Tape color comes from this material, so it can be changed per world too
+    spec.add_material(name="tape", rgba=[0.95, 0.95, 0.95, 1])
 
     world = spec.worldbody
     world.add_light(
+        name="sun",
         type=mujoco.mjtLightType.mjLIGHT_DIRECTIONAL,
         pos=[0, 0, 3],
         dir=[0.3, 0.2, -1],
@@ -46,6 +62,23 @@ def build_scene(spec: mujoco.MjSpec) -> None:
         ambient=[0.3, 0.3, 0.3],
         castshadow=False,
     )
+    # Lamps: spot lights that fade with distance, so they light the floor unevenly
+    # (bright pools, gradients, glare on a glossy floor). Off here; the GPU env
+    # turns them on and moves them per world (rcsim/env/kernels.py randomize_look)
+    for k in range(LAMPS):
+        world.add_light(
+            name=f"lamp_{k}",
+            type=mujoco.mjtLightType.mjLIGHT_SPOT,
+            pos=[0, 0, 2],
+            dir=[0, 0, -1],
+            diffuse=[0, 0, 0],
+            ambient=[0, 0, 0],
+            specular=[0, 0, 0],
+            attenuation=[1, 0, 1],  # 1 / (1 + d^2), d in m
+            cutoff=70,  # cone half-angle, degrees (always, unlike other angles)
+            exponent=1,
+            castshadow=False,
+        )
     world.add_geom(
         name="floor",
         type=mujoco.mjtGeom.mjGEOM_PLANE,
@@ -132,16 +165,20 @@ def build_car(spec: mujoco.MjSpec, cfg: CarConfig) -> None:
 
 
 def build_model(
-    cfg: CarConfig, centerline: np.ndarray | None = None
+    cfg: CarConfig, track: Track | None = None, tape_pool: int = 0
 ) -> tuple[mujoco.MjSpec, mujoco.MjModel]:
+    """track: tape drawn for that one track. tape_pool: that many movable tape
+    boxes instead, for the GPU env, where every world can be on a different track."""
     spec = mujoco.MjSpec()
     build_scene(spec)
-    if centerline is not None:
-        build_track(spec, centerline)
+    if track is not None:
+        build_track(spec, track)
+    if tape_pool:
+        build_tape_pool(spec, tape_pool)
     build_car(spec, cfg)
     return spec, spec.compile()
 
 
 if __name__ == "__main__":
-    spec, model = build_model(load_config(), oval_centerline())
+    spec, model = build_model(load_config(), Track.from_centerline(oval_centerline()))
     mujoco.viewer.launch(model)

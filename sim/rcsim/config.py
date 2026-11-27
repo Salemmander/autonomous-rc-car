@@ -9,7 +9,9 @@ import tomllib
 from dataclasses import dataclass, fields
 from pathlib import Path
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "car.toml"
+from rcsim.paths import CAR_CONFIG
+
+CONFIG_PATH = CAR_CONFIG
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,7 @@ class SteeringConfig:
     servo_center: int
     servo_right: int
     max_angle_deg: float
+    response_time_s: float  # servo time constant (first-order lag)
 
     @property
     def max_angle(self) -> float:
@@ -45,6 +48,7 @@ class SteeringConfig:
 class ThrottleConfig:
     max_speed: float  # m/s at full PWM
     min_duty: int  # % PWM that first moves the car
+    response_time_s: float  # motor time constant (first-order lag)
 
 
 @dataclass(frozen=True)

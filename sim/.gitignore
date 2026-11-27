@@ -1,2 +1,4 @@
 MUJOCO_LOG.TXT
 typings
+runs/
+out/
