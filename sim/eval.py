@@ -21,8 +21,9 @@ import warp as wp
 from rcsim.assets.track_gen import generate_track
 from rcsim.checkpoints import add_args, resolve
 from rcsim.env.car_env import CarEnv
+from rcsim.env.kernels import CMD_STEER
 from rcsim.experiment import load_experiment
-from rcsim.model.agent import PilotNetActor
+from rcsim.model.agent import PilotNetActor, RecurrentActor
 
 wp.config.log_level = wp.LOG_WARNING
 
@@ -61,8 +62,13 @@ env = CarEnv(
     nominal=not args.randomize,
 )
 assert env.pixel_shape is not None
-actor = PilotNetActor(env.pixel_shape, env.action_dim).cuda()
-actor.load_state_dict(torch.load(actor_file, map_location="cuda"))
+state = torch.load(actor_file, map_location="cuda")
+if "gru.weight_ih" in state:
+    hidden_dim = state["gru.bias_hh"].shape[0] // 3
+    actor = RecurrentActor(env.pixel_shape, env.action_dim, hidden_dim).cuda()
+else:
+    actor = PilotNetActor(env.pixel_shape, env.action_dim).cuda()
+actor.load_state_dict(state)
 actor.eval()
 
 n = len(tracks)
@@ -76,12 +82,25 @@ offset = torch.zeros(n, device="cuda")
 steps_alive = torch.zeros(n, device="cuda")
 
 out = env.reset()
-pixels = out.pixels
+obs, pixels = out.obs, out.pixels
+h = (
+    torch.zeros(n, actor.hidden_dim, device="cuda")
+    if isinstance(actor, RecurrentActor)
+    else None
+)
 with torch.no_grad():
     for step in range(cfg.env.episode_steps):
         assert pixels is not None
-        out = env.step(actor(pixels))  # actor() is the mean action
-        pixels = out.pixels
+        if isinstance(actor, RecurrentActor):
+            assert h is not None
+            prev_cmd = obs[:, CMD_STEER : CMD_STEER + 2]
+            action, h = actor.step(pixels, prev_cmd, h)
+        else:
+            action = actor(pixels)  # actor() is the mean action
+        out = env.step(action)
+        obs, pixels = out.obs, out.pixels
+        if h is not None:
+            h = h * (1 - out.done).unsqueeze(-1)
         crashed = out.done * (1 - out.truncated)
 
         laps += env.laps_t * alive
