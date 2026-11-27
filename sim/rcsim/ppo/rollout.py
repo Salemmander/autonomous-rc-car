@@ -11,7 +11,13 @@ class RolloutBuffer:
     """
 
     def __init__(
-        self, rollout_steps, num_worlds, obs_dim, action_dim, pixel_shape
+        self,
+        rollout_steps,
+        num_worlds,
+        obs_dim,
+        action_dim,
+        pixel_shape,
+        hidden_dim,
     ) -> None:
         T, W = rollout_steps, num_worlds
         self.rollout_steps = T
@@ -31,6 +37,8 @@ class RolloutBuffer:
         self.dones = zeros(T, W)
         self.advantages = zeros(T, W)
         self.returns = zeros(T, W)
+        self.h = zeros(W, hidden_dim)
+        self.h0 = zeros(W, hidden_dim)
 
     def collect_rollout(self, env, actor, critic, reward_scale, gamma):
         """Run the policy for T steps in every world. Returns stats.
@@ -44,12 +52,15 @@ class RolloutBuffer:
         forces a sync, so the caller only does that when it logs.
         """
         # [crashes, laps, speed, |offset|, |steer change|, then one per reward term]
+        self.h0.copy_(self.h)
         stats = torch.zeros(5 + env.reward_terms_t.shape[1], device="cuda")
 
         with torch.no_grad():
             obs, pixels = env.obs_t, env.pixels_t
             for step in range(self.rollout_steps):
-                dist = actor.get_dist(pixels)  # the actor only sees the camera
+                prev_cmd = obs[:, CMD_STEER : CMD_STEER + 2]
+                mean, h_new = actor.step(pixels, prev_cmd, self.h)
+                dist = actor.dist(mean)
                 action = dist.sample()
                 self.obs[step] = obs
                 self.pixels[step] = pixels
@@ -58,6 +69,7 @@ class RolloutBuffer:
                 self.values[step] = critic(obs)
 
                 out = env.step(action.clamp(-1.0, 1.0))
+                self.h.copy_(h_new * (1 - out.done).unsqueeze(-1))
                 reward, done, truncated = out.reward, out.done, out.truncated
 
                 # Timeout isn't failure: add the value of where the car would have
