@@ -517,6 +517,7 @@ class LookIds:
     floor_mat: int
     tape_mat: int
     num_floor_tex: int  # texture ids 0..num_floor_tex-1 are floors, 0 = the default
+    floor_tex_lum: wp.array1d[float]  # mean luminance [0, 1] of each floor texture
     texrepeat: wp.vec2  # floor pattern scale, default
     tape_rgba: wp.vec4  # default
     cam: int  # the car's camera
@@ -583,11 +584,11 @@ def randomize_look(
         tape_color = wp.randf(rng, 0.2, 1.0) * (
             (1.0 - sat) * wp.vec3(1.0, 1.0, 1.0) + sat * hue_color(wp.randf(rng))
         )
-    # Keep the tape visible: if it's about as bright as the floor (textures average
-    # ~0.6), make it white on a dark floor or black on a light one
-    floor_lum = 0.6 * luminance(floor_color)
-    if wp.abs(luminance(tape_color) - floor_lum) < 0.2:
-        if floor_lum < 0.5:
+    # Keep the tape visible: use this floor texture's actual average brightness
+    # (e.g. tiles ~0.74 vs grid ~0.40) so white tape doesn't wash out on light floors
+    floor_lum = ids.floor_tex_lum[floor_tex] * luminance(floor_color)
+    if wp.abs(luminance(tape_color) - floor_lum) < 0.3:
+        if floor_lum < 0.45:
             tape_color = wp.vec3(0.95, 0.95, 0.95)
         else:
             tape_color = wp.vec3(0.08, 0.08, 0.08)

@@ -246,6 +246,22 @@ class CarEnv:
         self.look_ids.floor_mat = floor_mat
         self.look_ids.tape_mat = tape_mat
         self.look_ids.num_floor_tex = m.ntex  # every texture is a floor; 0 = default
+        # Exact average luminance [0, 1] of each floor texture (so bright tiles/planks
+        # trigger dark tape reliably in randomize_look)
+        tex_lums = []
+        for tid in range(m.ntex):
+            adr = int(m.tex_adr[tid])
+            size = (
+                int(m.tex_height[tid])
+                * int(m.tex_width[tid])
+                * int(m.tex_nchannel[tid])
+            )
+            rgb = m.tex_data[adr : adr + size].reshape(-1, int(m.tex_nchannel[tid]))
+            lum = (
+                0.299 * rgb[:, 0] + 0.587 * rgb[:, 1] + 0.114 * rgb[:, 2]
+            ).mean() / 255.0
+            tex_lums.append(float(lum))
+        self.look_ids.floor_tex_lum = wp.array(tex_lums, dtype=float)
         self.look_ids.texrepeat = wp.vec2(*m.mat_texrepeat[floor_mat])
         self.look_ids.tape_rgba = wp.vec4(*m.mat_rgba[tape_mat])
         self.look_ids.cam = cam_id

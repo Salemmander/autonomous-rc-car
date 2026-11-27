@@ -27,49 +27,67 @@ steer_rate = 0.5 # penalty x (steering change per step)^2, steering in [-1, 1]
 # of the car.toml value; [1.0, 1.0] = always exactly that value. eval.py and view.py
 # use the car.toml car exactly. Until the car is measured, only latency (the biggest
 # unknown), top speed, steering angle, and trim vary.
-latency = [0.8, 1.5]        # x control.latency_s: camera frame -> wheels (40-75 ms)
-steer_response = [1.0, 1.0] # x steering.response_time_s: how fast the servo turns
-speed_response = [1.0, 1.0] # x throttle.response_time_s: how fast it speeds up/slows down
-max_speed = [0.8, 1.2]      # x throttle.max_speed: top speed at full throttle
-max_steer = [0.85, 1.15]    # x steering.max_angle_deg: wheel angle at full lock
-steer_trim = 0.05           # servo center off by up to +-this (1 = full lock), so
-                            # "straight" drifts a little to one side
+latency = [0.8, 1.5] # x control.latency_s: camera frame -> wheels (40-75 ms)
+steer_response = [
+  1.0,
+  1.0,
+] # x steering.response_time_s: how fast the servo turns
+speed_response = [
+  1.0,
+  1.0,
+] # x throttle.response_time_s: how fast it speeds up/slows down
+max_speed = [0.8, 1.2] # x throttle.max_speed: top speed at full throttle
+max_steer = [0.85, 1.15] # x steering.max_angle_deg: wheel angle at full lock
+steer_trim = 0.05 # servo center off by up to +-this (1 = full lock), so
+# "straight" drifts a little to one side
 
 [visuals]
 # The camera image is randomized every episode too, so the policy learns to follow
 # tape on floors, tape, lighting, and cameras that don't look like the sim's default.
 # eval.py and view.py use the default look (gray checker, white tape) unless
 # --randomize. Preview: uv run python tools/show_views.py
-floor_brightness = [0.4, 1.3] # x the floor texture (7 kinds, rcsim/assets/textures.py)
-floor_saturation = 0.4        # how colorful the floor can be (0 = gray, 1 = vivid)
-floor_scale = [0.5, 2.0]      # x the floor pattern size
-tape_width = [0.02, 0.05]     # m (default 0.03)
-tape_white = 0.5              # chance the tape is white; otherwise a random color
-camera_height = 0.01          # m, +- the car.toml camera height
-camera_pitch_deg = 3.0        # +- the car.toml camera tilt
-exposure = [0.6, 1.4]         # image brightness
+floor_brightness = [
+  0.35,
+  1.0,
+] # x the floor texture (7 kinds, rcsim/assets/textures.py)
+floor_saturation = 0.4 # how colorful the floor can be (0 = gray, 1 = vivid)
+floor_scale = [0.5, 2.0] # x the floor pattern size
+tape_width = [0.02, 0.05] # m (default 0.03)
+tape_white = 0.5 # chance the tape is white; otherwise a random color
+camera_height = 0.01 # m, +- the car.toml camera height
+camera_pitch_deg = 3.0 # +- the car.toml camera tilt
+exposure = [0.6, 1.4] # image brightness
 contrast = [0.7, 1.3]
-white_balance = 0.15          # +- per color channel, so colors shift a little
-noise = 0.04                  # sensor noise: up to this std per pixel (1 = full range), new every frame
+white_balance = 0.15 # +- per color channel, so colors shift a little
+noise = 0.04 # sensor noise: up to this std per pixel (1 = full range), new every frame
 # Lighting (default: sun 0.7, ambient 0.3, lamps off)
-sun = [0.2, 0.9]              # directional light brightness: even over a flat floor
-sun_elevation_deg = [30, 90]  # its angle above the floor
+sun = [0.2, 0.9] # directional light brightness: even over a flat floor
+sun_elevation_deg = [30, 90] # its angle above the floor
 ambient = [0.1, 0.5]
-lamp = [0.0, 1.5]             # a spot light, fading as 1/(1 + d^2) at d m: uneven light, glare
-lamp_height = [0.8, 2.5]      # m above the floor
-light_tint = 0.15             # +- warm (bulb) or cool (daylight), per light
-floor_gloss = [0.0, 0.8]      # floor shine (default 0.5)
+lamp = [
+  0.0,
+  1.5,
+] # a spot light, fading as 1/(1 + d^2) at d m: uneven light, glare
+lamp_height = [0.8, 2.5] # m above the floor
+light_tint = 0.15 # +- warm (bulb) or cool (daylight), per light
+floor_gloss = [0.0, 0.8] # floor shine (default 0.5)
 
 [tracks]
 # Random track generator (rcsim/assets/track_gen.py). Ranges are [min, max].
 # Preview with: uv run python tools/show_tracks.py
-count = 1024              # training tracks; every reset puts the car on a random one
-corners = [6, 16]         # polygon corners the track is rounded from; more = twistier
-radius = [0.5, 4.3]       # m, corner distance from the middle; uneven = hairpins and S-bends
-turn_radius = [0.6, 3.0]  # m, curve radius at each corner; the car's own minimum is ~0.43
-width = [0.5, 0.8]        # m, between the tapes (the car is 0.18 m wide)
-length = [8.0, 30.0]      # m, once around
-gap = 0.3                 # m, minimum space between tapes of different parts of the track
+count = 1024 # training tracks; every reset puts the car on a random one
+corners = [6, 16] # polygon corners the track is rounded from; more = twistier
+radius = [
+  0.5,
+  4.3,
+] # m, corner distance from the middle; uneven = hairpins and S-bends
+turn_radius = [
+  0.6,
+  3.0,
+] # m, curve radius at each corner; the car's own minimum is ~0.43
+width = [0.5, 0.8] # m, between the tapes (the car is 0.18 m wide)
+length = [8.0, 30.0] # m, once around
+gap = 0.3 # m, minimum space between tapes of different parts of the track
 
 [ppo]
 iterations = 300      # each one = collect a rollout, then update
