@@ -25,17 +25,16 @@ from pathlib import Path
 
 import torch
 import warp as wp
-from torch.optim import Adam
-from torch.utils.tensorboard import SummaryWriter
-
 from rcsim.assets.track_gen import generate_tracks
 from rcsim.env.car_env import CarEnv
 from rcsim.experiment import load_experiment, to_toml
-from rcsim.model.agent import Critic, PilotNetActor
+from rcsim.model.agent import Critic, RecurrentActor
 from rcsim.paths import RUNS_DIR
 from rcsim.ppo.graph import Graphed
 from rcsim.ppo.ppo import ppo_update
 from rcsim.ppo.rollout import RolloutBuffer
+from torch.optim import Adam
+from torch.utils.tensorboard import SummaryWriter
 
 wp.config.log_level = wp.LOG_WARNING
 torch.backends.cuda.matmul.allow_tf32 = True  # faster matmuls on RTX 30xx
@@ -79,7 +78,7 @@ env = CarEnv(
     visuals=cfg.visuals,
 )
 assert env.pixel_shape is not None
-actor = PilotNetActor(env.pixel_shape, env.action_dim).cuda()
+actor = RecurrentActor(env.pixel_shape, env.action_dim, ppo.hidden_dim).cuda()
 actor = actor.to(memory_format=torch.channels_last)  # faster convs
 critic = Critic(env.obs_dim, ppo.hidden_dim).cuda()
 # lr is a GPU tensor so the decay below can change it without re-recording the graph
@@ -91,7 +90,12 @@ optimizer = Adam(
     capturable=True,  # optimizer step can be recorded in a CUDA graph
 )
 buffer = RolloutBuffer(
-    ppo.rollout_steps, cfg.env.num_worlds, env.obs_dim, env.action_dim, env.pixel_shape
+    ppo.rollout_steps,
+    cfg.env.num_worlds,
+    env.obs_dim,
+    env.action_dim,
+    env.pixel_shape,
+    actor.hidden_dim,
 )
 
 

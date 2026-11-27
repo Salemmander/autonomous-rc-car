@@ -1,5 +1,7 @@
 import torch
 
+from rcsim.env.kernels import CMD_STEER
+
 
 def ppo_update(
     actor,
@@ -13,39 +15,43 @@ def ppo_update(
     minibatch_size=32768,
     max_grad_norm=0.5,
 ):
-    # (T, W, ...) -> (T*W, ...): every step of every world is one sample
-    obs = buffer.obs.flatten(0, 1)  # critic input (sim state)
-    pixels = buffer.pixels.flatten(0, 1)  # actor input (camera)
-    actions = buffer.actions.flatten(0, 1)
-    old_log_probs = buffer.log_probs.flatten()
-    returns = buffer.returns.flatten()
-    advantages = buffer.advantages.flatten()
+    # Keep (T, W, ...) unflattened so each world's sequence stays in order for the GRU
+    obs = buffer.obs  # critic input (sim state)
+    pixels = buffer.pixels  # actor input (camera)
+    actions = buffer.actions
+    old_log_probs = buffer.log_probs
+    returns = buffer.returns
+    advantages = buffer.advantages
+    h0 = buffer.h0
+    dones = buffer.dones
     advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+    T, W = buffer.rollout_steps, buffer.num_worlds
 
     params = list(actor.parameters()) + list(critic.parameters())
-    batch_size = obs.shape[0]
+    worlds_per_mb = minibatch_size // T
     stats = torch.zeros(3, device="cuda")
     num_updates = 0
 
     for _ in range(update_epochs):
-        # Random order via argsort of noise: same as randperm, but safe to
-        # record in a CUDA graph (see rcsim/ppo/graph.py)
-        indices = torch.rand(batch_size, device="cuda").argsort()
-        for start in range(0, batch_size, minibatch_size):
-            mb = indices[start : start + minibatch_size]
+        # Shuffle whole worlds (keeping each world's T steps chronological);
+        # argsort of noise is safe to record in a CUDA graph (rcsim/ppo/graph.py)
+        indices = torch.rand(W, device="cuda").argsort()
+        for start in range(0, W, worlds_per_mb):
+            mb = indices[start : start + worlds_per_mb]
 
-            dist = actor.get_dist(pixels[mb])
-            new_log_probs = dist.log_prob(actions[mb]).sum(-1)
+            prev_cmd = obs[:, mb, CMD_STEER : CMD_STEER + 2]
+            dist = actor.sequence(pixels[:, mb], prev_cmd, dones[:, mb], h0[mb])
+            new_log_probs = dist.log_prob(actions[:, mb]).sum(-1)
             entropy = dist.entropy().sum(-1).mean()
 
             # How much more (or less) likely the action is now than when collected
-            ratio = torch.exp(new_log_probs - old_log_probs[mb])
+            ratio = torch.exp(new_log_probs - old_log_probs[:, mb])
             clipped = ratio.clamp(1 - clip_epsilon, 1 + clip_epsilon)
             actor_loss = -torch.min(
-                ratio * advantages[mb], clipped * advantages[mb]
+                ratio * advantages[:, mb], clipped * advantages[:, mb]
             ).mean()
 
-            critic_loss = ((critic(obs[mb]) - returns[mb]) ** 2).mean()
+            critic_loss = ((critic(obs[:, mb]) - returns[:, mb]) ** 2).mean()
 
             loss = (
                 actor_loss + critic_loss_weight * critic_loss - entropy_weight * entropy

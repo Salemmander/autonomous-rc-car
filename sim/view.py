@@ -32,8 +32,9 @@ from rcsim.assets.track_gen import generate_track
 from rcsim.checkpoints import add_args, resolve
 from rcsim.config import load_config
 from rcsim.env.car_env import CarEnv
+from rcsim.env.kernels import CMD_STEER
 from rcsim.experiment import load_experiment
-from rcsim.model.agent import PilotNetActor
+from rcsim.model.agent import PilotNetActor, RecurrentActor
 
 wp.config.log_level = wp.LOG_WARNING
 
@@ -87,9 +88,14 @@ env = CarEnv(
     evaluate=not args.random_start,
 )
 assert env.pixel_shape is not None
-actor = PilotNetActor(env.pixel_shape, env.action_dim).cuda()
 print(f"loading {actor_file.name}")
-actor.load_state_dict(torch.load(actor_file, map_location="cuda"))
+state = torch.load(actor_file, map_location="cuda")
+if "gru.weight_ih" in state:
+    hidden_dim = state["gru.bias_hh"].shape[0] // 3
+    actor = RecurrentActor(env.pixel_shape, env.action_dim, hidden_dim).cuda()
+else:
+    actor = PilotNetActor(env.pixel_shape, env.action_dim).cuda()
+actor.load_state_dict(state)
 actor.eval()
 
 # The env's model has movable tape for the GPU; the viewer gets the track drawn in.
@@ -99,6 +105,11 @@ data = mujoco.MjData(model)
 
 start = env.reset()
 obs, pixels = start.obs, start.pixels
+h = (
+    torch.zeros(1, actor.hidden_dim, device="cuda")
+    if isinstance(actor, RecurrentActor)
+    else None
+)
 laps = 0.0  # this episode
 episodes = crashes = 0
 
@@ -112,10 +123,18 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
 
         with torch.no_grad():
             assert pixels is not None  # render=True
-            dist = actor.get_dist(pixels)
-            action = dist.sample() if args.stochastic else dist.mean
+            if isinstance(actor, RecurrentActor):
+                assert h is not None
+                prev_cmd = obs[:, CMD_STEER : CMD_STEER + 2]
+                mean, h = actor.step(pixels, prev_cmd, h)
+                action = actor.dist(mean).sample() if args.stochastic else mean
+            else:
+                dist = actor.get_dist(pixels)
+                action = dist.sample() if args.stochastic else dist.mean
         out = env.step(action.clamp(-1.0, 1.0))
         obs, pixels = out.obs, out.pixels
+        if h is not None:
+            h = h * (1 - out.done).unsqueeze(-1)
 
         reward = out.reward.item()
         terms = env.reward_terms_t[0].tolist()
@@ -132,12 +151,16 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
             (
                 None,
                 mujoco.mjtGridPos.mjGRID_TOPRIGHT.value,
-                "steer\nthrottle\nspeed\noffset\nlaps\nepisodes\ncrashes\n"
-                "reward\n  progress\n  off track\n  center\n  steer rate",
-                f"{steer:+.2f}\n{throttle:+.2f}\n{obs[0, 3].item() * env.car.max_speed:.2f} m/s\n"
-                f"{obs[0, 0].item():+.2f}\n{laps:.2f}\n"
-                f"{episodes}\n{crashes}\n{reward:+.3f}\n"
-                + "\n".join(f"{t:+.3f}" for t in terms),
+                (
+                    "steer\nthrottle\nspeed\noffset\nlaps\nepisodes\ncrashes\n"
+                    "reward\n  progress\n  off track\n  center\n  steer rate"
+                ),
+                (
+                    f"{steer:+.2f}\n{throttle:+.2f}\n{obs[0, 3].item() * env.car.max_speed:.2f} m/s\n"
+                    f"{obs[0, 0].item():+.2f}\n{laps:.2f}\n"
+                    f"{episodes}\n{crashes}\n{reward:+.3f}\n"
+                    + "\n".join(f"{t:+.3f}" for t in terms)
+                ),
             )
         )
         viewer.sync()

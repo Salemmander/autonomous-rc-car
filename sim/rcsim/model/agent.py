@@ -70,6 +70,82 @@ class PilotNetActor(nn.Module):
         return Normal(self.forward(pixels), self.log_std.exp(), validate_args=False)
 
 
+class RecurrentActor(nn.Module):
+    def __init__(
+        self,
+        pixel_shape: tuple[int, int, int],
+        action_dim: int = 2,
+        hidden_dim: int = 128,
+    ) -> None:
+        super().__init__()
+        c, h, w = pixel_shape
+        self.conv_layers = nn.Sequential(
+            layer_init(nn.Conv2d(c, 24, kernel_size=5, stride=2)),
+            nn.ReLU(),
+            layer_init(nn.Conv2d(24, 36, kernel_size=5, stride=2)),
+            nn.ReLU(),
+            layer_init(nn.Conv2d(36, 48, kernel_size=5, stride=2)),
+            nn.ReLU(),
+            layer_init(nn.Conv2d(48, 64, kernel_size=3, stride=1)),
+            nn.ReLU(),
+            layer_init(nn.Conv2d(64, 64, kernel_size=3, stride=1)),
+            nn.ReLU(),
+        )
+        self.hidden_dim = hidden_dim
+        with torch.no_grad():
+            conv_out = self.conv_layers(torch.zeros(1, c, h, w)).flatten(1).shape[1]
+
+        self.img_proj = nn.Sequential(
+            layer_init(nn.Linear(conv_out, hidden_dim)),
+            nn.ReLU(),
+        )
+        self.cmd_proj = layer_init(nn.Linear(action_dim, hidden_dim))
+
+        self.gru = nn.GRUCell(hidden_dim, hidden_dim)
+
+        self.output = layer_init(nn.Linear(hidden_dim, action_dim), gain=0.01)
+        self.log_std = nn.Parameter(torch.full((action_dim,), -0.5))
+
+    def encode(self, pixels: torch.Tensor, prev_cmd: torch.Tensor) -> torch.Tensor:
+        x = pixels.float().div_(255)  # same scaling as ToTensor() and the ONNX /255
+        x = x.contiguous(memory_format=torch.channels_last)  # faster convs
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            x = self.conv_layers(x).flatten(1)
+            x = self.img_proj(x)
+        return x.float() + self.cmd_proj(prev_cmd)
+
+    def step(
+        self, pixels: torch.Tensor, prev_cmd: torch.Tensor, h: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        feat = self.encode(pixels, prev_cmd)
+        h_new = self.gru(feat, h)
+        mean = torch.tanh(self.output(h_new))
+        return mean, h_new
+
+    def dist(self, mean: torch.Tensor) -> Normal:
+        return Normal(mean, self.log_std.exp(), validate_args=False)
+
+    def sequence(
+        self,
+        pixels: torch.Tensor,
+        prev_cmd: torch.Tensor,
+        dones: torch.Tensor,
+        h0: torch.Tensor,
+    ) -> Normal:
+        T, B = pixels.shape[:2]
+        features = self.encode(pixels.flatten(0, 1), prev_cmd.flatten(0, 1)).unflatten(
+            0, (T, B)
+        )
+        h = h0
+        hs = []
+        for t in range(T):
+            h = self.gru(features[t], h)
+            hs.append(h)
+            h = h * (1.0 - dones[t]).unsqueeze(-1)
+        mean = torch.tanh(self.output(torch.stack(hs, dim=0)))
+        return self.dist(mean)
+
+
 class Critic(nn.Module):
     """Value network on sim-only state (asymmetric actor-critic). Training only:
     it never goes on the car, so it can use information the car doesn't have."""
